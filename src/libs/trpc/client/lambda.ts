@@ -120,7 +120,13 @@ const linkOptions = {
 // Procedures that should skip batching for faster initial load
 const initialLoadProcedures = new Set(['user.getUserState', 'config.getGlobalConfig']);
 const slowProcedures = new Set(['market.getAssistantList']);
-const SKIP_BATCH_PROCEDURES = new Set([...initialLoadProcedures, ...slowProcedures]);
+// Procedures that set cookies must not be batched, otherwise Set-Cookie headers may be lost
+const cookieSettingProcedures = new Set(['market.registerM2MToken']);
+const SKIP_BATCH_PROCEDURES = new Set([
+  ...initialLoadProcedures,
+  ...slowProcedures,
+  ...cookieSettingProcedures,
+]);
 
 // 3. splitLink to conditionally disable batching
 const customSplitLink = splitLink({
