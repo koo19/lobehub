@@ -1,7 +1,8 @@
 import { SiDiscord, SiTelegram } from '@icons-pack/react-simple-icons';
 import type { LucideIcon } from 'lucide-react';
-import { MessageCircle, MessageSquareText } from 'lucide-react';
 import type { FC } from 'react';
+
+import { LarkIcon } from './icons';
 
 export interface IntegrationProvider {
   /** Lark-style auth: appId + appSecret instead of botToken */
@@ -72,7 +73,7 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
       verificationToken: 'Verification Token',
       webhook: 'Event Subscription URL',
     },
-    icon: MessageCircle,
+    icon: LarkIcon,
     id: 'feishu',
     name: '飞书',
   },
@@ -89,7 +90,7 @@ export const INTEGRATION_PROVIDERS: IntegrationProvider[] = [
       verificationToken: 'Verification Token',
       webhook: 'Event Subscription URL',
     },
-    icon: MessageSquareText,
+    icon: LarkIcon,
     id: 'lark',
     name: 'Lark',
   },
