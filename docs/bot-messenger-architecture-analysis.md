@@ -190,11 +190,77 @@ Chat SDK 的 thread state（存 Redis 或内存）将 `topicId` 绑定到平台 
 | 凭证加密 | KeyVaultsGateKeeper 保护 Bot Token 安全 |
 | Stale topicId 自动恢复 | FK violation 检测 + 重试，优雅处理 topic 删除 |
 
-## 四、改进优先级路线图
+## 四、深度补充：代码级别的具体风险
+
+以下是对代码更深入审查后发现的额外问题：
+
+### 1. Webhook 回调幂等性缺失
+
+**位置：** `bot-callback/route.ts`
+
+QStash 重试会重新投递 step/completion webhook。当前代码没有幂等性检查：
+- `editMessage()` 重复调用 = 冗余编辑（影响小）
+- `createMessage()` 重复调用 = **重复消息**（影响大，用户看到多条相同回复）
+- 没有按 `operationId + stepIndex` 去重
+
+**建议：** 在 Redis 中记录已处理的 `{operationId, stepIndex}` 对，跳过重复投递。
+
+### 2. 内存泄漏风险：单例 Map 只增不减
+
+**位置：** `BotMessageRouter.ts:310` — `if (this.botInstances.has(key)) continue`
+
+`loadAgentBots()` 只添加新 Bot，**从不移除**已禁用或删除的 Bot。四个 Map（`botInstances`、`botInstancesByToken`、`agentMap`、`credentialsByKey`）持续增长，长期运行的实例可能 OOM。
+
+**建议：** 每次刷新时 diff 当前活跃集合，移除不再存在的条目。
+
+### 3. 脆弱的错误检测逻辑
+
+**位置：** `AgentBridgeService.ts:244`
+
+```typescript
+if (errMsg.includes('Failed query') && errMsg.includes('topic_id')) {
+```
+
+用字符串匹配检测数据库 FK violation。如果 Drizzle ORM 或 PostgreSQL 版本变更导致错误消息措辞变化，这个恢复逻辑会失效，用户会看到原始数据库错误。
+
+**建议：** 改为捕获具体的 error code（如 PostgreSQL 的 `23503` foreign key violation）。
+
+### 4. Discord 附件 CDN URL 过期
+
+**位置：** `AgentBridgeService.ts:641-691`
+
+Discord CDN URL 包含时间签名，约 24 小时后过期。如果 Agent 执行时间较长（多步 tool 调用），下载附件时 URL 可能已过期。
+
+**建议：** 在 `extractFiles()` 阶段立即下载并上传到持久存储（S3），而非传递原始 CDN URL。
+
+### 5. QStash 签名验证可被静默跳过
+
+**位置：** `src/libs/qstash/index.ts`
+
+如果 `QSTASH_CURRENT_SIGNING_KEY` 和 `QSTASH_NEXT_SIGNING_KEY` 环境变量未设置，`verifyQStashSignature()` 返回 `true`，仅输出 debug 日志。这意味着未配置签名密钥的部署，bot-callback 端点对任意请求开放。
+
+**建议：** 在 Queue 模式下，签名密钥应为必填项；未配置时应拒绝请求而非放行。
+
+### 6. handleSubscribedMessage 的递归重试无限循环风险
+
+**位置：** `AgentBridgeService.ts:250`
+
+```typescript
+await thread.setState({ ...threadState, topicId: undefined });
+return this.handleMention(thread, message, { agentId, botContext });
+```
+
+如果 `handleMention` 内部也因其他原因抛出包含 `topic_id` 的错误，递归调用会不断重试。虽然概率低，但缺少循环检测。
+
+**建议：** 添加重试计数器，限制最多重试 1 次。
+
+---
+
+## 五、改进优先级路线图
 
 ```
-P0 (立即)  → 平台 API Rate Limiting + Completion 兜底机制
-P1 (近期)  → 并发消息序列化 + Bot 配置热更新
-P2 (中期)  → 结构化日志/监控 + 用户权限控制
-P3 (长期)  → 多实例支持 + 富文本消息 + Health Check
+P0 (立即)  → 平台 API Rate Limiting + Completion 兜底机制 + 幂等性
+P1 (近期)  → 并发消息序列化 + Bot 配置热更新 + 内存泄漏修复
+P2 (中期)  → 结构化日志/监控 + 用户权限控制 + QStash 签名强制
+P3 (长期)  → 多实例支持 + 富文本消息 + Health Check + Graceful Shutdown
 ```
