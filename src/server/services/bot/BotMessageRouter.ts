@@ -425,6 +425,7 @@ export class BotMessageRouter {
   private createBot(adapters: Record<string, any>, label: string): Chat<any> {
     const config: any = {
       adapters,
+      logger: 'debug',
       userName: `lobehub-bot-${label}`,
     };
 

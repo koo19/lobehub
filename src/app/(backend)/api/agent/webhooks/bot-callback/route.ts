@@ -156,10 +156,10 @@ export async function POST(request: Request): Promise<Response> {
     progressMessageId,
   );
 
-  if (!type || !applicationId || !platformThreadId || !progressMessageId) {
+  if (!type || !applicationId || !platformThreadId) {
     return NextResponse.json(
       {
-        error: 'Missing required fields: type, applicationId, platformThreadId, progressMessageId',
+        error: 'Missing required fields: type, applicationId, platformThreadId',
       },
       { status: 400 },
     );
@@ -295,11 +295,11 @@ export async function POST(request: Request): Promise<Response> {
 async function handleStepCallback(
   body: Record<string, any>,
   messenger: PlatformMessenger,
-  progressMessageId: string,
+  progressMessageId: string | undefined,
   platform?: string,
 ): Promise<void> {
   const { shouldContinue } = body;
-  if (!shouldContinue) return;
+  if (!shouldContinue || !progressMessageId) return;
 
   const progressText = renderStepProgress({
     content: body.content,
@@ -338,7 +338,7 @@ async function handleStepCallback(
 async function handleCompletionCallback(
   body: Record<string, any>,
   messenger: PlatformMessenger,
-  progressMessageId: string,
+  progressMessageId: string | undefined,
   platform?: string,
   charLimit?: number,
 ): Promise<void> {
@@ -347,9 +347,13 @@ async function handleCompletionCallback(
   if (reason === 'error') {
     const errorText = renderError(errorMessage || 'Agent execution failed');
     try {
-      await messenger.editMessage(progressMessageId, errorText);
+      if (progressMessageId) {
+        await messenger.editMessage(progressMessageId, errorText);
+      } else {
+        await messenger.createMessage(errorText);
+      }
     } catch (error) {
-      log('handleCompletionCallback: failed to edit error message: %O', error);
+      log('handleCompletionCallback: failed to post error message: %O', error);
     }
     return;
   }
@@ -371,7 +375,11 @@ async function handleCompletionCallback(
   const chunks = splitMessage(finalText, charLimit);
 
   try {
-    await messenger.editMessage(progressMessageId, chunks[0]);
+    if (progressMessageId) {
+      await messenger.editMessage(progressMessageId, chunks[0]);
+    } else {
+      await messenger.createMessage(chunks[0]);
+    }
 
     // Post overflow chunks as follow-up messages
     for (let i = 1; i < chunks.length; i++) {

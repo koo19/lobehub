@@ -313,17 +313,14 @@ export class AgentBridgeService {
 
     const progressMessageId = progressMessage?.id;
     if (!progressMessageId) {
-      console.error(
-        '[AgentBridge] executeWithWebhooks: progressMessage=%O, id=%s',
-        progressMessage,
-        progressMessage?.id,
-      );
-      throw new Error('Failed to post initial progress message');
+      log('executeWithWebhooks: no progressMessageId, will proceed without progress updates');
     }
 
     // Refresh typing indicator after posting the ack message,
     // so typing stays active until the first step webhook arrives
-    await thread.startTyping();
+    if (progressMessage) {
+      await thread.startTyping();
+    }
 
     // Build webhook URL for bot-callback endpoint
     // Prefer INTERNAL_APP_URL for server-to-server calls (bypasses CDN/proxy)
