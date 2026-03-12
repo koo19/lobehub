@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
+import type { ViteDevServer } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
@@ -127,6 +128,18 @@ export function sharedRendererPlugins(options: SharedRendererOptions) {
     viteNodeModuleStub(),
     vitePlatformResolve(options.platform),
     defaultTsconfigPaths && tsconfigPaths({ projects: ['.'] }),
+    isDev &&
+      options.platform === 'mobile' && {
+        name: 'vite-mobile-index',
+        configureServer(server: ViteDevServer) {
+          server.middlewares.use((req: { url?: string }, _res: unknown, next: () => void) => {
+            if (req.url === '/' || req.url === '/index.html') {
+              req.url = '/index.mobile.html';
+            }
+            next();
+          });
+        },
+      },
     isDev &&
       codeInspectorPlugin({
         bundler: 'vite',
