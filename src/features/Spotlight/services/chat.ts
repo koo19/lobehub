@@ -68,7 +68,7 @@ export const sendSpotlightMessage = async (
       onErrorHandle: (error: any) => {
         onError(new Error(typeof error === 'string' ? error : error?.message || 'Stream error'));
       },
-      onFinish: () => {
+      onFinish: async () => {
         onFinish();
       },
       onMessageHandle: (chunk: any) => {
