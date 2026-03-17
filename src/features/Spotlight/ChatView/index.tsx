@@ -2,6 +2,7 @@ import { createStyles } from 'antd-style';
 import { memo } from 'react';
 
 import { useSpotlightStore } from '../store';
+import MessageList from './MessageList';
 
 const useStyles = createStyles(({ css, token }) => ({
   container: css`
@@ -36,51 +37,26 @@ const useStyles = createStyles(({ css, token }) => ({
       background: ${token.colorFillTertiary};
     }
   `,
-  messageList: css`
-    overflow-y: auto;
-    flex: 1;
-    padding-block: 8px;
-    padding-inline: 16px;
-  `,
-  placeholder: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    height: 100%;
-
-    font-size: 13px;
-    color: ${token.colorTextQuaternary};
-  `,
 }));
 
 const ChatView = memo(() => {
   const { styles } = useStyles();
-  const messages = useSpotlightStore((s) => s.messages);
+  const topicId = useSpotlightStore((s) => s.topicId);
 
   const handleExpandToMain = async () => {
-    const { agentId, topicId, groupId } = useSpotlightStore.getState();
+    const { agentId, groupId } = useSpotlightStore.getState();
     if (!topicId) return;
     await window.electronAPI?.invoke?.('spotlight.expandToMain', { agentId, groupId, topicId });
   };
 
   return (
     <div className={styles.container}>
-      <button className={styles.expandButton} onClick={handleExpandToMain}>
-        ↗ Open in main window
-      </button>
-      <div className={styles.messageList}>
-        {messages.length === 0 ? (
-          <div className={styles.placeholder}>Messages will appear here</div>
-        ) : (
-          messages.map((msg) => (
-            <div key={msg.id} style={{ marginBottom: 8, fontSize: 13 }}>
-              <strong>{msg.role === 'user' ? 'You' : 'AI'}:</strong> {msg.content}
-              {msg.loading && ' ▌'}
-            </div>
-          ))
-        )}
-      </div>
+      {topicId && (
+        <button className={styles.expandButton} onClick={handleExpandToMain}>
+          ↗ Open in main window
+        </button>
+      )}
+      <MessageList />
     </div>
   );
 });
