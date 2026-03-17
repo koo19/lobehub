@@ -5,6 +5,7 @@ import type { BrowserWindowOpts } from './core/browser/Browser';
 export const BrowsersIdentifiers = {
   app: 'app',
   devtools: 'devtools',
+  spotlight: 'spotlight',
 };
 
 export const appBrowsers = {
@@ -31,6 +32,21 @@ export const appBrowsers = {
     path: '/desktop/devtools',
     titleBarStyle: 'hiddenInset',
     width: 1000,
+  },
+  spotlight: {
+    fullscreenable: false,
+    hasShadow: true,
+    height: 56,
+    identifier: 'spotlight',
+    keepAlive: true,
+    maximizable: false,
+    minimizable: false,
+    path: '/desktop/spotlight',
+    resizable: false,
+    showOnInit: false,
+    skipSplash: true,
+    skipTaskbar: true,
+    width: 680,
   },
 } satisfies Record<string, BrowserWindowOpts>;
 
