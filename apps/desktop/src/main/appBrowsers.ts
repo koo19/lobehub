@@ -36,7 +36,7 @@ export const appBrowsers = {
   spotlight: {
     fullscreenable: false,
     hasShadow: true,
-    height: 56,
+    height: 120,
     identifier: 'spotlight',
     keepAlive: true,
     maximizable: false,
@@ -46,6 +46,7 @@ export const appBrowsers = {
     showOnInit: false,
     skipSplash: true,
     skipTaskbar: true,
+    type: 'panel',
     width: 680,
   },
 } satisfies Record<string, BrowserWindowOpts>;

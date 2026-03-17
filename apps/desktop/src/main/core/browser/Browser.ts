@@ -152,7 +152,7 @@ export default class Browser {
       show: false,
       title,
       webPreferences: {
-        backgroundThrottling: false,
+        backgroundThrottling: this.identifier === 'spotlight',
         contextIsolation: true,
         preload: join(preloadDir, 'index.js'),
         sandbox: false,
@@ -172,9 +172,11 @@ export default class Browser {
     // Setup theme management (includes liquid glass lifecycle on macOS Tahoe)
     this.themeManager.attach(browserWindow);
 
-    // Spotlight: float above all windows
+    // Spotlight: panel behavior
     if (this.identifier === 'spotlight') {
       browserWindow.setAlwaysOnTop(true, 'floating');
+      browserWindow.setHiddenInMissionControl(true);
+      browserWindow.setVisibleOnAllWorkspaces(true);
     }
 
     // Setup network interceptors
@@ -383,20 +385,35 @@ export default class Browser {
     });
   }
 
+  private _expandDirection: 'down' | 'up' = 'down';
+
+  get expandDirection() {
+    return this._expandDirection;
+  }
+
   /**
    * Show window at a specific screen coordinate.
    * Applies boundary correction to keep within display work area.
    */
   showAt(point: { x: number; y: number }): void {
     const display = screen.getDisplayNearestPoint(point);
-    const { width, height } = this.browserWindow.getBounds();
+    const { width } = this.browserWindow.getBounds();
+    const maxHeight = 480;
 
     let x = Math.round(point.x - width / 2);
     let y = point.y + 8;
 
     const bounds = display.workArea;
     x = Math.max(bounds.x, Math.min(x, bounds.x + bounds.width - width));
-    y = Math.max(bounds.y, Math.min(y, bounds.y + bounds.height - height));
+
+    if (y + maxHeight > bounds.y + bounds.height) {
+      y = point.y - 8 - this.browserWindow.getBounds().height;
+      y = Math.max(bounds.y, y);
+      this._expandDirection = 'up';
+    } else {
+      y = Math.max(bounds.y, y);
+      this._expandDirection = 'down';
+    }
 
     this.browserWindow.setPosition(x, y);
     this.browserWindow.show();
