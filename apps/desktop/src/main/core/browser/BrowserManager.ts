@@ -4,14 +4,8 @@ import type { WebContents } from 'electron';
 import RemoteServerConfigCtr from '@/controllers/RemoteServerConfigCtr';
 import { createLogger } from '@/utils/logger';
 
-import type {
-  AppBrowsersIdentifiers,
-  WindowTemplateIdentifiers} from '../../appBrowsers';
-import {
-  appBrowsers,
-  BrowsersIdentifiers,
-  windowTemplates,
-} from '../../appBrowsers';
+import type { AppBrowsersIdentifiers, WindowTemplateIdentifiers } from '../../appBrowsers';
+import { appBrowsers, BrowsersIdentifiers, windowTemplates } from '../../appBrowsers';
 import type { App } from '../App';
 import type { BrowserWindowOpts } from './Browser';
 import Browser from './Browser';
@@ -33,6 +27,10 @@ export class BrowserManager {
 
   getMainWindow() {
     return this.retrieveByIdentifier(BrowsersIdentifiers.app);
+  }
+
+  getSpotlightWindow() {
+    return this.retrieveByIdentifier(BrowsersIdentifiers.spotlight);
   }
 
   showMainWindow() {
@@ -58,6 +56,18 @@ export class BrowserManager {
   ) => {
     logger.debug(`Broadcasting event ${event} to window: ${identifier}`);
     this.browsers.get(identifier)?.broadcast(event, data);
+  };
+
+  broadcastToOtherWindows = <T extends MainBroadcastEventKey>(
+    event: T,
+    data: MainBroadcastParams<T>,
+    excludeWebContents?: WebContents,
+  ) => {
+    logger.debug(`Broadcasting event ${event} to all windows except sender`);
+    this.browsers.forEach((browser) => {
+      if (excludeWebContents && browser.webContents === excludeWebContents) return;
+      browser.broadcast(event, data);
+    });
   };
 
   /**
@@ -192,6 +202,11 @@ export class BrowserManager {
 
     Object.values(appBrowsers).forEach((browser: BrowserWindowOpts) => {
       logger.debug(`Initializing browser: ${browser.identifier}`);
+
+      // Don't initialize spotlight until onboarding is done
+      if (browser.identifier === BrowsersIdentifiers.spotlight && !isOnboardingCompleted) {
+        return;
+      }
 
       // Dynamically determine initial path for main window
       if (browser.identifier === BrowsersIdentifiers.app) {

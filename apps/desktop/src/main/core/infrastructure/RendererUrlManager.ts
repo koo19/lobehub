@@ -14,6 +14,7 @@ const logger = createLogger('core:RendererUrlManager');
 // Vite build with root=monorepo preserves input path structure,
 // so index.html ends up at apps/desktop/index.html in outDir.
 const SPA_ENTRY_HTML = join(rendererDir, 'apps', 'desktop', 'index.html');
+const SPOTLIGHT_ENTRY_HTML = join(rendererDir, 'apps', 'desktop', 'spotlight.html');
 
 export class RendererUrlManager {
   private readonly rendererProtocolManager: RendererProtocolManager;
@@ -75,6 +76,11 @@ export class RendererUrlManager {
     if (pathname.startsWith('/assets/') || extname(pathname)) {
       const filePath = join(rendererDir, pathname);
       return pathExistsSync(filePath) ? filePath : null;
+    }
+
+    // Spotlight routes → spotlight.html
+    if (pathname.startsWith('/desktop/spotlight')) {
+      return SPOTLIGHT_ENTRY_HTML;
     }
 
     // All routes fallback to index.html (SPA)
