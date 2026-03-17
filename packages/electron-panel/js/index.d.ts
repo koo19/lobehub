@@ -31,4 +31,12 @@ export declare class Panel {
    * @param duration Animation duration in seconds (default 0.2).
    */
   animateResize(frame: Rect, duration?: number): boolean;
+
+  /**
+   * Animate window to a new frame, accepting Electron-style bounds (top-left origin).
+   * Converts to macOS screen coordinates internally.
+   * @param frame Target frame in Electron screen coordinates (top-left origin).
+   * @param duration Animation duration in seconds (default 0.2).
+   */
+  animateResizeElectron(frame: Rect, duration?: number): boolean;
 }

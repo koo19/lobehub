@@ -11,6 +11,10 @@ extern "C" bool animateResize(unsigned char *buffer,
                                double x, double y,
                                double width, double height,
                                double duration);
+extern "C" bool animateResizeElectron(unsigned char *buffer,
+                                       double x, double y,
+                                       double width, double height,
+                                       double duration);
 #endif
 
 class Panel : public Napi::ObjectWrap<Panel> {
@@ -21,6 +25,7 @@ public:
       InstanceMethod("enableNativeDrag", &Panel::EnableNativeDrag),
       InstanceMethod("disableNativeDrag", &Panel::DisableNativeDrag),
       InstanceMethod("animateResize", &Panel::AnimateResize),
+      InstanceMethod("animateResizeElectron", &Panel::AnimateResizeElectron),
     });
 
     Napi::FunctionReference *constructor = new Napi::FunctionReference();
@@ -121,6 +126,34 @@ private:
 
 #ifdef __APPLE__
     bool ok = animateResize(handle_, x, y, w, h, duration);
+    return Napi::Boolean::New(env, ok);
+#else
+    return Napi::Boolean::New(env, false);
+#endif
+  }
+
+  Napi::Value AnimateResizeElectron(const Napi::CallbackInfo &info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 1 || !info[0].IsObject()) {
+      Napi::TypeError::New(env, "Expected {x, y, width, height}")
+        .ThrowAsJavaScriptException();
+      return env.Null();
+    }
+
+    auto frame = info[0].As<Napi::Object>();
+    double x = frame.Get("x").As<Napi::Number>().DoubleValue();
+    double y = frame.Get("y").As<Napi::Number>().DoubleValue();
+    double w = frame.Get("width").As<Napi::Number>().DoubleValue();
+    double h = frame.Get("height").As<Napi::Number>().DoubleValue();
+
+    double duration = 0.2;
+    if (info.Length() >= 2 && info[1].IsNumber()) {
+      duration = info[1].As<Napi::Number>().DoubleValue();
+    }
+
+#ifdef __APPLE__
+    bool ok = animateResizeElectron(handle_, x, y, w, h, duration);
     return Napi::Boolean::New(env, ok);
 #else
     return Napi::Boolean::New(env, false);

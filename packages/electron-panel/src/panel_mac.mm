@@ -153,8 +153,21 @@ extern "C" bool disableNativeDrag(unsigned char *buffer) {
 }
 
 // ---------------------------------------------------------------------------
-// animateResize — smoothly animate window to a new frame
+// animateResize — smoothly animate window to a new frame (macOS coordinates)
 // ---------------------------------------------------------------------------
+static void applyFrame(NSWindow *window, NSRect newFrame, double duration) {
+  if (duration <= 0) {
+    [window setFrame:newFrame display:YES];
+  } else {
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *ctx) {
+      ctx.duration = duration;
+      ctx.timingFunction = [CAMediaTimingFunction
+          functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+      [[window animator] setFrame:newFrame display:YES];
+    }];
+  }
+}
+
 extern "C" bool animateResize(unsigned char *buffer,
                                double x, double y,
                                double width, double height,
@@ -170,19 +183,44 @@ extern "C" bool animateResize(unsigned char *buffer,
     NSWindow *window = [rootView window];
     if (!window) return;
 
-    NSRect newFrame = NSMakeRect(x, y, width, height);
+    applyFrame(window, NSMakeRect(x, y, width, height), duration);
+    success = true;
+  });
 
-    if (duration <= 0) {
-      [window setFrame:newFrame display:YES];
-    } else {
-      [NSAnimationContext runAnimationGroup:^(NSAnimationContext *ctx) {
-        ctx.duration = duration;
-        ctx.timingFunction = [CAMediaTimingFunction
-            functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-        [[window animator] setFrame:newFrame display:YES];
-      }];
-    }
+  return success;
+}
 
+// ---------------------------------------------------------------------------
+// animateResizeElectron — animate using Electron-style bounds (top-left origin)
+// Converts from Electron screen coordinates to macOS screen coordinates
+// ---------------------------------------------------------------------------
+extern "C" bool animateResizeElectron(unsigned char *buffer,
+                                       double x, double y,
+                                       double width, double height,
+                                       double duration) {
+  if (!buffer) return false;
+
+  __block bool success = false;
+
+  RUN_ON_MAIN(^{
+    NSView *rootView = *reinterpret_cast<NSView **>(buffer);
+    if (!rootView) return;
+
+    NSWindow *window = [rootView window];
+    if (!window) return;
+
+    // Find the screen containing this window
+    NSScreen *windowScreen = [window screen];
+    if (!windowScreen) windowScreen = [NSScreen mainScreen];
+
+    // macOS screen coordinates: origin is bottom-left of primary screen
+    // Electron coordinates: origin is top-left of primary screen
+    // Primary screen's frame.origin.y is always 0 in macOS coords
+    // For conversion: macY = primaryScreenHeight - electronY - windowHeight
+    NSRect primaryFrame = [[NSScreen screens] firstObject].frame;
+    double macY = primaryFrame.size.height - y - height;
+
+    applyFrame(window, NSMakeRect(x, macY, width, height), duration);
     success = true;
   });
 

@@ -33,22 +33,7 @@ export default class SpotlightCtr extends ControllerModule {
     });
 
     ipcMain.handle('spotlight:resize', (_event, params: { height: number; width: number }) => {
-      const spotlight = this.app.browserManager.browsers.get(BrowsersIdentifiers.spotlight);
-      if (!spotlight) return;
-
-      const currentBounds = spotlight.browserWindow.getBounds();
-      const newBounds = {
-        height: params.height,
-        width: params.width,
-        x: currentBounds.x,
-        y: currentBounds.y,
-      };
-
-      if (spotlight.expandDirection === 'up' && params.height > currentBounds.height) {
-        newBounds.y = currentBounds.y - (params.height - currentBounds.height);
-      }
-
-      spotlight.browserWindow.setBounds(newBounds, true);
+      this.resizeSpotlight(params);
     });
 
     ipcMain.handle('spotlight:setChatState', (_event, isChatting: boolean) => {
@@ -117,6 +102,10 @@ export default class SpotlightCtr extends ControllerModule {
 
   @IpcMethod()
   async resize(params: { height: number; width: number }) {
+    this.resizeSpotlight(params);
+  }
+
+  private resizeSpotlight(params: { height: number; width: number }) {
     const spotlight = this.app.browserManager.browsers.get(BrowsersIdentifiers.spotlight);
     if (!spotlight) return;
 
@@ -132,7 +121,11 @@ export default class SpotlightCtr extends ControllerModule {
       newBounds.y = currentBounds.y - (params.height - currentBounds.height);
     }
 
-    spotlight.browserWindow.setBounds(newBounds, true);
+    if (this.panel) {
+      this.panel.animateResizeElectron(newBounds, 0.15);
+    } else {
+      spotlight.browserWindow.setBounds(newBounds, true);
+    }
   }
 
   @IpcMethod()

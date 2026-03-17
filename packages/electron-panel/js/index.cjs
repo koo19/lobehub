@@ -47,6 +47,11 @@ class Panel {
     if (duration === undefined) duration = 0.2;
     return this._addon ? this._addon.animateResize(frame, duration) : false;
   }
+
+  animateResizeElectron(frame, duration) {
+    if (duration === undefined) duration = 0.2;
+    return this._addon ? this._addon.animateResizeElectron(frame, duration) : false;
+  }
 }
 
 module.exports = { Panel };
