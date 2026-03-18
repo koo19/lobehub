@@ -637,20 +637,6 @@
       "when": 1773115333051,
       "tag": "0090_enable_pg_search",
       "breakpoints": true
-    },
-    {
-      "idx": 91,
-      "version": "7",
-      "when": 1773395565800,
-      "tag": "0091_bot_provider_add_connection_mode",
-      "breakpoints": true
-    },
-    {
-      "idx": 92,
-      "version": "7",
-      "when": 1773481200000,
-      "tag": "0092_bot_provider_add_settings",
-      "breakpoints": true
     }
   ],
   "version": "6"

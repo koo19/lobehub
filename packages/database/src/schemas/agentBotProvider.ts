@@ -1,13 +1,4 @@
-import {
-  boolean,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  uniqueIndex,
-  uuid,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { boolean, index, pgTable, text, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
 
 import { timestamps } from './_helpers';
@@ -42,15 +33,12 @@ export const agentBotProviders = pgTable(
     /** Encrypted credentials string (decrypted to JSON with botToken, publicKey, etc.) */
     credentials: text('credentials'),
 
-    /** User-configurable settings (dm policy, charLimit, debounce, etc.) */
-    settings: jsonb('settings').$type<Record<string, unknown>>().default({}),
-
     enabled: boolean('enabled').default(true).notNull(),
 
     ...timestamps,
   },
   (t) => [
-    // Fast lookup: platform + applicationId → agent
+    // Fast webhook lookup: platform + applicationId → agent
     uniqueIndex('agent_bot_providers_platform_app_id_unique').on(t.platform, t.applicationId),
     index('agent_bot_providers_platform_idx').on(t.platform),
     index('agent_bot_providers_agent_id_idx').on(t.agentId),
