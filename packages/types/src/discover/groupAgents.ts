@@ -6,7 +6,7 @@ import type { MetaData } from '../meta';
 export interface GroupAgentMember {
   avatar?: string;
   category?: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
   description: string;
   displayOrder?: number;
   enabled?: boolean;
@@ -42,10 +42,6 @@ export type GroupAgentCategory =
  * Group Agent Config - similar to LobeAgentConfig but for groups
  */
 export interface GroupAgentConfig {
-  /**
-   * Additional configuration
-   */
-  [key: string]: any;
   /**
    * Opening message when starting a conversation with the group
    */

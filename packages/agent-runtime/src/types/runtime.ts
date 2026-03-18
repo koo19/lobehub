@@ -23,7 +23,7 @@ export interface RuntimeConfig {
   /** Function to get operation context and abort controller */
   getOperation?: (operationId: string) => {
     abortController: AbortController;
-    context: Record<string, any>;
+    context: Record<string, unknown>;
   };
   /** Operation ID for tracking this runtime instance */
   operationId?: string;

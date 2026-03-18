@@ -69,7 +69,6 @@ export interface GeneralAgentHumanAbortPayload {
 
 export interface GeneralAgentConfig {
   agentConfig?: {
-    [key: string]: any;
     maxSteps?: number;
   };
   /**

@@ -3,6 +3,7 @@ import {
   type ExtendedHumanInterventionConfig,
   type HumanInterventionConfig,
   type HumanInterventionPolicy,
+  type ToolArguments,
 } from '@lobechat/types';
 
 import { createDefaultGlobalAudits, DEFAULT_SECURITY_BLACKLIST } from '../audit';
@@ -75,7 +76,7 @@ export class GeneralChatAgent implements Agent {
 
   private matchesAlwaysPolicy(
     config: HumanInterventionConfig | undefined,
-    toolArgs: Record<string, any>,
+    toolArgs: ToolArguments,
   ): boolean {
     if (!config) return false;
     if (config === 'always') return true;
@@ -100,8 +101,8 @@ export class GeneralChatAgent implements Agent {
 
   private resolveDynamicPolicy(
     config: ExtendedHumanInterventionConfig | undefined,
-    toolArgs: Record<string, any>,
-    metadata?: Record<string, any>,
+    toolArgs: ToolArguments,
+    metadata?: Record<string, unknown>,
   ): HumanInterventionPolicy | undefined {
     if (!this.isDynamicInterventionConfig(config)) {
       return undefined;
@@ -146,7 +147,7 @@ export class GeneralChatAgent implements Agent {
       const toolKey = `${identifier}/${apiName}`;
 
       // Parse arguments for intervention checking
-      let toolArgs: Record<string, any> = {};
+      let toolArgs: ToolArguments = {};
       try {
         toolArgs = JSON.parse(toolCalling.arguments || '{}');
       } catch {

@@ -28,7 +28,7 @@ export interface LobeUniformTool {
    */
   parameters: {
     additionalProperties?: boolean;
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required?: string[];
     type: 'object';
   };

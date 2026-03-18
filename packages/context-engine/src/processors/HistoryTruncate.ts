@@ -28,12 +28,11 @@ interface MinimalMessage {
   metadata?: {
     agentCouncil?: boolean;
     compare?: boolean;
-    [key: string]: any;
   } | null;
   parentId?: string;
   role: string;
   tool_call_id?: string;
-  tools?: Array<{ id: string; [key: string]: any }>;
+  tools?: Array<{ id: string }>;
 }
 
 /**

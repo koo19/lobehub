@@ -36,11 +36,11 @@ export interface OfficialToolItem {
 export interface AgentBuilderContext {
   /** Agent configuration */
   config?: {
-    chatConfig?: Record<string, any>;
+    chatConfig?: Record<string, unknown>;
     model?: string;
     openingMessage?: string;
     openingQuestions?: string[];
-    params?: Record<string, any>;
+    params?: Record<string, unknown>;
     plugins?: string[];
     provider?: string;
     systemRole?: string;

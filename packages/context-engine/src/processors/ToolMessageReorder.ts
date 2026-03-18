@@ -72,7 +72,7 @@ export class ToolMessageReorder extends BaseProcessor {
     });
 
     // 2. Collect all valid tool messages
-    const toolMessages: Record<string, any> = {};
+    const toolMessages: Record<string, unknown> = {};
     messages.forEach((message) => {
       if (
         message.role === 'tool' &&
