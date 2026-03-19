@@ -37,27 +37,11 @@ export class ResourceManagerStoreActionImpl {
   }
 
   clearSelectAllState = (): void => {
-    this.#set({ isSelectingAllItems: false, selectAllState: 'none' });
+    this.#set({ selectAllState: 'none' });
   };
 
   handleBackToList = (): void => {
     this.#set({ currentViewItemId: undefined, mode: 'explorer' });
-  };
-
-  loadMoreKnowledgeItems = async (): Promise<void> => {
-    const { fileListHasMore } = this.#get();
-
-    if (!fileListHasMore) return;
-
-    const { useFileStore } = await import('@/store/file');
-    const fileStore = useFileStore.getState();
-
-    await fileStore.loadMoreKnowledgeItems();
-
-    this.#set({
-      fileListHasMore: fileStore.fileListHasMore,
-      fileListOffset: fileStore.fileListOffset,
-    });
   };
 
   onActionClick = async (type: MultiSelectActionType): Promise<void> => {
@@ -78,7 +62,7 @@ export class ResourceManagerStoreActionImpl {
           await resourceService.deleteResourcesByQuery(fileStore.queryParams as any);
           await revalidateResources(fileStore.queryParams);
 
-          this.#set({ isSelectingAllItems: false, selectAllState: 'none', selectedFileIds: [] });
+          this.#set({ selectAllState: 'none', selectedFileIds: [] });
           return;
         }
 
@@ -152,40 +136,12 @@ export class ResourceManagerStoreActionImpl {
     this.#set({ category });
   };
 
-  setCurrentFolderId = (currentFolderId: string | null | undefined): void => {
-    this.#set({ currentFolderId });
-  };
-
   setCurrentViewItemId = (currentViewItemId?: string): void => {
     this.#set({ currentViewItemId });
   };
 
-  setFileListHasMore = (fileListHasMore: boolean): void => {
-    this.#set({ fileListHasMore });
-  };
-
-  setFileListOffset = (fileListOffset: number): void => {
-    this.#set({ fileListOffset });
-  };
-
-  setIsMasonryReady = (isMasonryReady: boolean): void => {
-    this.#set({ isMasonryReady });
-  };
-
-  setIsSelectingAllItems = (isSelectingAllItems: boolean): void => {
-    this.#set({ isSelectingAllItems });
-  };
-
-  setIsTransitioning = (isTransitioning: boolean): void => {
-    this.#set({ isTransitioning });
-  };
-
   setLibraryId = (libraryId?: string): void => {
-    this.#set({
-      fileListHasMore: false,
-      fileListOffset: 0,
-      libraryId,
-    });
+    this.#set({ libraryId });
   };
 
   setMode = (mode: ResourceManagerMode): void => {
@@ -205,10 +161,9 @@ export class ResourceManagerStoreActionImpl {
   };
 
   setSelectedFileIds = (selectedFileIds: string[]): void => {
-    const { isSelectingAllItems, selectAllState } = this.#get();
+    const { selectAllState } = this.#get();
 
     this.#set({
-      isSelectingAllItems: selectedFileIds.length === 0 ? false : isSelectingAllItems,
       selectAllState: selectedFileIds.length === 0 ? 'none' : selectAllState,
       selectedFileIds,
     });

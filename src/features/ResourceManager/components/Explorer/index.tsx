@@ -15,7 +15,6 @@ import ListView from './ListView';
 import MasonryView from './MasonryView';
 import SearchResultsOverlay from './SearchResultsOverlay';
 import { useCheckTaskStatus } from './useCheckTaskStatus';
-import { useResourceExplorer } from './useResourceExplorer';
 
 /**
  * Explore resource items in a library
@@ -86,9 +85,6 @@ const ResourceExplorer = memo(() => {
 
   // Check task status
   useCheckTaskStatus(data);
-
-  // Initialize folder/file navigation effects (still need hook for complex effects)
-  useResourceExplorer({ category, libraryId });
 
   // Clear selections when category/library/search changes
   useEffect(() => {

@@ -14,7 +14,7 @@ import { PAGE_FILE_TYPE } from '@/features/ResourceManager/constants';
 import {
   getTransparentDragImage,
   useDragActive,
-  useDragState,
+  useSetCurrentDrag,
 } from '@/routes/(main)/resource/features/DndContextWrapper';
 import { useResourceManagerStore } from '@/routes/(main)/resource/features/store';
 import { useFileStore } from '@/store/file';
@@ -135,7 +135,7 @@ export const HierarchyNode = memo<HierarchyNodeProps>(
     });
 
     const isDragActive = useDragActive();
-    const { setCurrentDrag } = useDragState();
+    const setCurrentDrag = useSetCurrentDrag();
     const [isDragging, setIsDragging] = useState(false);
     const [isOver, setIsOver] = useState(false);
 

@@ -8,17 +8,19 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useResourceManagerStore } from '@/routes/(main)/resource/features/store';
-import {
-  getExplorerSelectAllUiState,
-  sortFileList,
-} from '@/routes/(main)/resource/features/store/selectors';
+import { sortFileList } from '@/routes/(main)/resource/features/store/selectors';
 import { useFileStore } from '@/store/file';
 import { useFetchResources } from '@/store/file/slices/resource/hooks';
 import { type FileListItem } from '@/types/files';
 
+import {
+  useExplorerSelectionActions,
+  useExplorerSelectionSummary,
+} from '../hooks/useExplorerSelection';
 import { useMasonryColumnCount } from '../useMasonryColumnCount';
 import MasonryItemWrapper from './MasonryItem/MasonryItemWrapper';
 import MasonryViewSkeleton from './Skeleton';
+import { useMasonryViewState } from './useMasonryViewState';
 
 const styles = createStaticStyles(({ css }) => ({
   selectAllHint: css`
@@ -51,31 +53,17 @@ const styles = createStaticStyles(({ css }) => ({
 const MasonryView = memo(function MasonryView() {
   // Access all state from Resource Manager store
   const [
-    clearSelectAllState,
-    selectAllState,
     libraryId,
     category,
-    selectedFileIds,
-    selectAllLoadedResources,
-    selectAllResources,
-    setSelectedFileIds,
-    storeIsMasonryReady,
+    viewMode,
     sorter,
     sortType,
-    storeIsTransitioning,
   ] = useResourceManagerStore((s) => [
-    s.clearSelectAllState,
-    s.selectAllState,
     s.libraryId,
     s.category,
-    s.selectedFileIds,
-    s.selectAllLoadedResources,
-    s.selectAllResources,
-    s.setSelectedFileIds,
-    s.isMasonryReady,
+    s.viewMode,
     s.sorter,
     s.sortType,
-    s.isTransitioning,
   ]);
 
   const { t } = useTranslation(['components', 'file']);
@@ -150,47 +138,19 @@ const MasonryView = memo(function MasonryView() {
   const effectiveIsLoading = isLoading ?? false;
   const effectiveIsNavigating = isNavigating ?? false;
   const effectiveIsValidating = isValidating ?? false;
-  const effectiveIsTransitioning = storeIsTransitioning ?? false;
-  const effectiveIsMasonryReady = storeIsMasonryReady;
-
-  const showSkeleton =
-    (effectiveIsLoading && dataLength === 0) ||
-    (effectiveIsNavigating && effectiveIsValidating) ||
-    effectiveIsTransitioning ||
-    !effectiveIsMasonryReady;
-
-  const isSelectingAllItems = useResourceManagerStore((s) => s.isSelectingAllItems);
-  const { allSelected, indeterminate, showSelectAllHint } = useMemo(
-    () =>
-      getExplorerSelectAllUiState({
-        data,
-        hasMore,
-        selectAllState,
-        selectedIds: selectedFileIds,
-      }),
-    [data, hasMore, selectAllState, selectedFileIds],
-  );
-
-  const handleSelectAll = useCallback(() => {
-    if (selectAllState === 'all' || allSelected) {
-      setSelectedFileIds([]);
-      clearSelectAllState();
-      return;
-    }
-
-    selectAllLoadedResources(data.map((item) => item.id));
-  }, [
-    allSelected,
-    clearSelectAllState,
+  const { isMasonryReady, showSkeleton } = useMasonryViewState({
+    dataLength,
+    isLoading: effectiveIsLoading,
+    isNavigating: effectiveIsNavigating,
+    isValidating: effectiveIsValidating,
+    viewMode,
+  });
+  const { handleSelectAll, handleSelectAllResources, selectAllState, selectedFileIds, toggleItemSelection } =
+    useExplorerSelectionActions(data);
+  const { allSelected, indeterminate, showSelectAllHint } = useExplorerSelectionSummary({
     data,
-    selectAllLoadedResources,
-    selectAllState,
-    setSelectedFileIds,
-  ]);
-
-  const handleSelectAllResources = useCallback(() => {
-    selectAllResources();
-  }, [selectAllResources]);
+    hasMore,
+  });
 
   // Handle automatic load more when scrolling to bottom
   const handleLoadMore = useCallback(async () => {
@@ -206,15 +166,9 @@ const MasonryView = memo(function MasonryView() {
 
   const handleSelectionChange = useCallback(
     (id: string, checked: boolean) => {
-      clearSelectAllState();
-
-      if (checked) {
-        setSelectedFileIds([...selectedFileIds, id]);
-      } else {
-        setSelectedFileIds(selectedFileIds.filter((item) => item !== id));
-      }
+      toggleItemSelection(id, checked);
     },
-    [clearSelectAllState, selectedFileIds, setSelectedFileIds],
+    [toggleItemSelection],
   );
 
   const masonryContext = useMemo(
@@ -250,7 +204,7 @@ const MasonryView = memo(function MasonryView() {
       style={{
         flex: 1,
         height: '100%',
-        opacity: effectiveIsMasonryReady ? 1 : 0,
+        opacity: isMasonryReady ? 1 : 0,
         overflowY: 'auto',
         transition: 'opacity 0.2s ease-in-out',
       }}
@@ -258,12 +212,7 @@ const MasonryView = memo(function MasonryView() {
     >
       <div style={{ paddingBlockEnd: 24, paddingBlockStart: 12, paddingInline: 24 }}>
         <Flexbox horizontal align={'center'} className={styles.toolbar} gap={8}>
-          <Checkbox
-            checked={allSelected}
-            disabled={isSelectingAllItems}
-            indeterminate={indeterminate}
-            onChange={handleSelectAll}
-          />
+          <Checkbox checked={allSelected} indeterminate={indeterminate} onChange={handleSelectAll} />
           <span>
             {selectedFileIds.length > 0 || selectAllState === 'all'
               ? t(
@@ -306,12 +255,7 @@ const MasonryView = memo(function MasonryView() {
               )}
             </span>
             {selectAllState !== 'all' && (
-              <Button
-                loading={isSelectingAllItems}
-                size={'small'}
-                type={'link'}
-                onClick={handleSelectAllResources}
-              >
+              <Button size={'small'} type={'link'} onClick={handleSelectAllResources}>
                 {total && total > dataLength
                   ? t('FileManager.total.selectAll', {
                       count: total,

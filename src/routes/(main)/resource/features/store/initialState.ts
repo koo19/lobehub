@@ -10,33 +10,9 @@ export interface State {
    */
   category: FilesTabs;
   /**
-   * Current folder ID for navigation
-   */
-  currentFolderId?: string | null;
-  /**
    * Current view item ID (document ID or file ID)
    */
   currentViewItemId?: string;
-  /**
-   * Whether there are more files to load (pagination)
-   */
-  fileListHasMore: boolean;
-  /**
-   * Current pagination offset
-   */
-  fileListOffset: number;
-  /**
-   * Masonry view ready state
-   */
-  isMasonryReady: boolean;
-  /**
-   * Whether the explorer is currently loading remaining pages for select-all
-   */
-  isSelectingAllItems: boolean;
-  /**
-   * View transition state
-   */
-  isTransitioning: boolean;
   /**
    * Current library ID
    */
@@ -77,13 +53,7 @@ export interface State {
 
 export const initialState: State = {
   category: FilesTabs.All,
-  currentFolderId: undefined,
   currentViewItemId: undefined,
-  fileListHasMore: false,
-  fileListOffset: 0,
-  isMasonryReady: false,
-  isSelectingAllItems: false,
-  isTransitioning: false,
   libraryId: undefined,
   mode: 'explorer',
   pendingRenameItemId: null,
