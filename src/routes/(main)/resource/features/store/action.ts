@@ -1,9 +1,11 @@
-import { type StateCreator } from 'zustand/vanilla';
+import type { StateCreator } from 'zustand/vanilla';
 
-import { type ResourceManagerMode } from '@/features/ResourceManager';
-import { type FilesTabs, type SortType } from '@/types/files';
+import type { ResourceManagerMode } from '@/features/ResourceManager';
+import type { StoreSetter } from '@/store/types';
+import { flattenActions } from '@/store/utils/flattenActions';
+import type { FilesTabs, SortType } from '@/types/files';
 
-import { type SelectAllState, type State, type ViewMode } from './initialState';
+import type { SelectAllState, State, ViewMode } from './initialState';
 import { initialState } from './initialState';
 
 export type MultiSelectActionType =
@@ -20,143 +22,52 @@ export interface FolderCrumb {
   slug: string;
 }
 
-export interface Action {
-  clearSelectAllState: () => void;
-  /**
-   * Handle navigating back to list from file preview
-   */
-  handleBackToList: () => void;
-  /**
-   * Load more knowledge items (pagination)
-   */
-  loadMoreKnowledgeItems: () => Promise<void>;
-  /**
-   * Handle multi-select actions (delete, chunking, KB operations, etc.)
-   */
-  onActionClick: (type: MultiSelectActionType) => Promise<void>;
-  /**
-   * Resolve effective selection IDs. When select-all is active, this asks the server
-   * to expand the current query into a full ID list.
-   */
-  resolveSelectedResourceIds: () => Promise<string[]>;
-  selectAllLoadedResources: (ids: string[]) => void;
-  selectAllResources: () => void;
-  /**
-   * Set the current file category filter
-   */
-  setCategory: (category: FilesTabs) => void;
-  /**
-   * Set the current folder ID
-   */
-  setCurrentFolderId: (folderId: string | null | undefined) => void;
-  /**
-   * Set the current view item ID
-   */
-  setCurrentViewItemId: (id?: string) => void;
-  /**
-   * Set whether there are more files to load
-   */
-  setFileListHasMore: (value: boolean) => void;
-  /**
-   * Set the pagination offset
-   */
-  setFileListOffset: (value: number) => void;
-  /**
-   * Set masonry ready state
-   */
-  setIsMasonryReady: (value: boolean) => void;
-  /**
-   * Set whether select-all is currently loading all remaining items
-   */
-  setIsSelectingAllItems: (value: boolean) => void;
-  /**
-   * Set view transition state
-   */
-  setIsTransitioning: (value: boolean) => void;
-  /**
-   * Set the current library ID
-   */
-  setLibraryId: (id?: string) => void;
-  /**
-   * Set the view mode
-   */
-  setMode: (mode: ResourceManagerMode) => void;
-  /**
-   * Set the pending rename item ID
-   */
-  setPendingRenameItemId: (id: string | null) => void;
-  /**
-   * Set search query
-   */
-  setSearchQuery: (query: string | null) => void;
-  /**
-   * Set the current shared select-all state
-   */
-  setSelectAllState: (state: SelectAllState) => void;
-  /**
-   * Set selected file IDs
-   */
-  setSelectedFileIds: (ids: string[]) => void;
-  /**
-   * Set the field to sort files by
-   */
-  setSorter: (sorter: 'name' | 'createdAt' | 'size') => void;
-  /**
-   * Set the sort direction
-   */
-  setSortType: (sortType: SortType) => void;
-  /**
-   * Set the file explorer view mode
-   */
-  setViewMode: (viewMode: ViewMode) => void;
-}
-
 export type Store = Action & State;
 
-type CreateStore = (
-  initState?: Partial<State>,
-) => StateCreator<Store, [['zustand/devtools', never]]>;
+type Setter = StoreSetter<Store>;
 
-export const store: CreateStore = (publicState) => (set, get) => ({
-  ...initialState,
-  ...publicState,
+export class ResourceManagerStoreActionImpl {
+  readonly #get: () => Store;
+  readonly #set: Setter;
 
-  clearSelectAllState: () => {
-    set({ isSelectingAllItems: false, selectAllState: 'none' });
-  },
+  constructor(set: Setter, get: () => Store, _api?: unknown) {
+    void _api;
+    this.#set = set;
+    this.#get = get;
+  }
 
-  handleBackToList: () => {
-    set({ currentViewItemId: undefined, mode: 'explorer' });
-  },
+  clearSelectAllState = (): void => {
+    this.#set({ isSelectingAllItems: false, selectAllState: 'none' });
+  };
 
-  loadMoreKnowledgeItems: async () => {
-    const { fileListHasMore } = get();
+  handleBackToList = (): void => {
+    this.#set({ currentViewItemId: undefined, mode: 'explorer' });
+  };
 
-    // Don't load if there's no more data
+  loadMoreKnowledgeItems = async (): Promise<void> => {
+    const { fileListHasMore } = this.#get();
+
     if (!fileListHasMore) return;
 
     const { useFileStore } = await import('@/store/file');
     const fileStore = useFileStore.getState();
 
-    // Delegate to FileStore's loadMoreKnowledgeItems
     await fileStore.loadMoreKnowledgeItems();
 
-    // Sync pagination state back to ResourceManagerStore
-    set({
+    this.#set({
       fileListHasMore: fileStore.fileListHasMore,
       fileListOffset: fileStore.fileListOffset,
     });
-  },
+  };
 
-  onActionClick: async (type) => {
-    const { libraryId } = get();
+  onActionClick = async (type: MultiSelectActionType): Promise<void> => {
+    const { libraryId, resolveSelectedResourceIds, selectAllState, selectedFileIds } = this.#get();
     const { useFileStore } = await import('@/store/file');
     const { useKnowledgeBaseStore } = await import('@/store/library');
     const { isChunkingUnsupported } = await import('@/utils/isChunkingUnsupported');
 
     const fileStore = useFileStore.getState();
     const kbStore = useKnowledgeBaseStore.getState();
-    const { selectAllState } = get();
 
     switch (type) {
       case 'delete': {
@@ -167,73 +78,56 @@ export const store: CreateStore = (publicState) => (set, get) => ({
           await resourceService.deleteResourcesByQuery(fileStore.queryParams as any);
           await revalidateResources(fileStore.queryParams);
 
-          set({ isSelectingAllItems: false, selectAllState: 'none', selectedFileIds: [] });
+          this.#set({ isSelectingAllItems: false, selectAllState: 'none', selectedFileIds: [] });
           return;
         }
 
-        const selectedFileIds = get().selectedFileIds;
         await fileStore.deleteResources(selectedFileIds);
 
-        set({ selectedFileIds: [] });
+        this.#set({ selectedFileIds: [] });
         return;
       }
 
       case 'removeFromKnowledgeBase': {
-        const selectedFileIds = await get().resolveSelectedResourceIds();
+        const resourceIds = await resolveSelectedResourceIds();
         if (!libraryId) return;
-        await kbStore.removeFilesFromKnowledgeBase(libraryId, selectedFileIds);
-        set({ selectedFileIds: [] });
+
+        await kbStore.removeFilesFromKnowledgeBase(libraryId, resourceIds);
+        this.#set({ selectedFileIds: [] });
         return;
       }
 
-      case 'addToKnowledgeBase': {
-        // Modal operations need to be handled in component layer
-        // Store just marks that action was requested
-        // Component will handle opening modal via useAddFilesToKnowledgeBaseModal hook
-        return;
-      }
-
+      case 'addToKnowledgeBase':
       case 'moveToOtherKnowledgeBase': {
-        // Modal operations need to be handled in component layer
-        // Store just marks that action was requested
-        // Component will handle opening modal via useAddFilesToKnowledgeBaseModal hook
         return;
       }
 
       case 'batchChunking': {
-        const selectedFileIds = await get().resolveSelectedResourceIds();
-        const chunkableFileIds = selectedFileIds.filter((id) => {
+        const resourceIds = await resolveSelectedResourceIds();
+        const chunkableFileIds = resourceIds.filter((id) => {
           const resource = fileStore.resourceMap?.get(id);
           return resource && !isChunkingUnsupported(resource.fileType);
         });
+
         await fileStore.parseFilesToChunks(chunkableFileIds, { skipExist: true });
-        set({ selectedFileIds: [] });
+        this.#set({ selectedFileIds: [] });
         return;
       }
 
       case 'deleteLibrary': {
         if (!libraryId) return;
+
         await kbStore.removeKnowledgeBase(libraryId);
-        // Navigate to knowledge base page using window.location
-        // (can't use useNavigate hook from store)
+
         if (typeof window !== 'undefined') {
           window.location.href = '/knowledge';
         }
-        return;
       }
     }
-  },
+  };
 
-  selectAllLoadedResources: (selectedFileIds) => {
-    set({ selectedFileIds, selectAllState: 'loaded' });
-  },
-
-  selectAllResources: () => {
-    set({ selectAllState: 'all' });
-  },
-
-  resolveSelectedResourceIds: async () => {
-    const { selectAllState, selectedFileIds } = get();
+  resolveSelectedResourceIds = async (): Promise<string[]> => {
+    const { selectAllState, selectedFileIds } = this.#get();
     if (selectAllState !== 'all') return selectedFileIds;
 
     const { resourceService } = await import('@/services/resource');
@@ -244,86 +138,108 @@ export const store: CreateStore = (publicState) => (set, get) => ({
 
     const result = await resourceService.resolveSelectionIds(queryParams as any);
     return result.ids;
-  },
+  };
 
-  setCategory: (category) => {
-    set({ category });
-  },
+  selectAllLoadedResources = (selectedFileIds: string[]): void => {
+    this.#set({ selectedFileIds, selectAllState: 'loaded' });
+  };
 
-  setCurrentFolderId: (currentFolderId) => {
-    set({ currentFolderId });
-  },
+  selectAllResources = (): void => {
+    this.#set({ selectAllState: 'all' });
+  };
 
-  setCurrentViewItemId: (currentViewItemId) => {
-    set({ currentViewItemId });
-  },
+  setCategory = (category: FilesTabs): void => {
+    this.#set({ category });
+  };
 
-  setFileListHasMore: (fileListHasMore) => {
-    set({ fileListHasMore });
-  },
+  setCurrentFolderId = (currentFolderId: string | null | undefined): void => {
+    this.#set({ currentFolderId });
+  };
 
-  setFileListOffset: (fileListOffset) => {
-    set({ fileListOffset });
-  },
+  setCurrentViewItemId = (currentViewItemId?: string): void => {
+    this.#set({ currentViewItemId });
+  };
 
-  setIsSelectingAllItems: (isSelectingAllItems) => {
-    set({ isSelectingAllItems });
-  },
+  setFileListHasMore = (fileListHasMore: boolean): void => {
+    this.#set({ fileListHasMore });
+  };
 
-  setIsMasonryReady: (isMasonryReady) => {
-    set({ isMasonryReady });
-  },
+  setFileListOffset = (fileListOffset: number): void => {
+    this.#set({ fileListOffset });
+  };
 
-  setIsTransitioning: (isTransitioning) => {
-    set({ isTransitioning });
-  },
+  setIsMasonryReady = (isMasonryReady: boolean): void => {
+    this.#set({ isMasonryReady });
+  };
 
-  setLibraryId: (libraryId) => {
-    set({ libraryId });
+  setIsSelectingAllItems = (isSelectingAllItems: boolean): void => {
+    this.#set({ isSelectingAllItems });
+  };
 
-    // Reset pagination state when switching libraries to prevent showing stale data
-    set({
+  setIsTransitioning = (isTransitioning: boolean): void => {
+    this.#set({ isTransitioning });
+  };
+
+  setLibraryId = (libraryId?: string): void => {
+    this.#set({
       fileListHasMore: false,
       fileListOffset: 0,
+      libraryId,
     });
+  };
 
-    // Note: No need to manually refresh - Explorer's useEffect will automatically
-    // call fetchResources when libraryId changes
-  },
+  setMode = (mode: ResourceManagerMode): void => {
+    this.#set({ mode });
+  };
 
-  setMode: (mode) => {
-    set({ mode });
-  },
+  setPendingRenameItemId = (pendingRenameItemId: string | null): void => {
+    this.#set({ pendingRenameItemId });
+  };
 
-  setPendingRenameItemId: (pendingRenameItemId) => {
-    set({ pendingRenameItemId });
-  },
+  setSearchQuery = (searchQuery: string | null): void => {
+    this.#set({ searchQuery });
+  };
 
-  setSelectAllState: (selectAllState) => {
-    set({ selectAllState });
-  },
+  setSelectAllState = (selectAllState: SelectAllState): void => {
+    this.#set({ selectAllState });
+  };
 
-  setSearchQuery: (searchQuery) => {
-    set({ searchQuery });
-  },
+  setSelectedFileIds = (selectedFileIds: string[]): void => {
+    const { isSelectingAllItems, selectAllState } = this.#get();
 
-  setSelectedFileIds: (selectedFileIds) => {
-    set({
-      isSelectingAllItems: selectedFileIds.length === 0 ? false : get().isSelectingAllItems,
-      selectAllState: selectedFileIds.length === 0 ? 'none' : get().selectAllState,
+    this.#set({
+      isSelectingAllItems: selectedFileIds.length === 0 ? false : isSelectingAllItems,
+      selectAllState: selectedFileIds.length === 0 ? 'none' : selectAllState,
       selectedFileIds,
     });
-  },
+  };
 
-  setSortType: (sortType) => {
-    set({ sortType });
-  },
+  setSorter = (sorter: 'name' | 'createdAt' | 'size'): void => {
+    this.#set({ sorter });
+  };
 
-  setSorter: (sorter) => {
-    set({ sorter });
-  },
+  setSortType = (sortType: SortType): void => {
+    this.#set({ sortType });
+  };
 
-  setViewMode: (viewMode) => {
-    set({ viewMode });
-  },
-});
+  setViewMode = (viewMode: ViewMode): void => {
+    this.#set({ viewMode });
+  };
+}
+
+export type Action = Pick<ResourceManagerStoreActionImpl, keyof ResourceManagerStoreActionImpl>;
+
+export const createResourceManagerStoreSlice = (set: Setter, get: () => Store, _api?: unknown) =>
+  new ResourceManagerStoreActionImpl(set, get, _api);
+
+type CreateStore = (
+  initState?: Partial<State>,
+) => StateCreator<Store, [['zustand/devtools', never]]>;
+
+export const store: CreateStore =
+  (publicState) =>
+  (...params) => ({
+    ...initialState,
+    ...publicState,
+    ...flattenActions<Action>([createResourceManagerStoreSlice(...params)]),
+  });
