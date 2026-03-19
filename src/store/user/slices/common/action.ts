@@ -139,6 +139,7 @@ export class CommonActionImpl {
                 isUserCanEnableTrace: data.canEnableTrace,
                 isUserHasConversation: data.hasConversation,
                 isUserStateInit: true,
+                agentOnboarding: data.agentOnboarding,
                 onboarding: data.onboarding,
                 preference,
                 referralStatus: data.referralStatus,

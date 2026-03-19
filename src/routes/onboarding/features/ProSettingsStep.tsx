@@ -7,11 +7,13 @@ import { memo, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
+import { ONBOARDING_PRODUCTION_DEFAULT_MODEL } from '@/const/onboarding';
 import ModelSelect from '@/features/ModelSelect';
 import LobeMessage from '@/routes/onboarding/components/LobeMessage';
 import { serverConfigSelectors, useServerConfigStore } from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { settingsSelectors } from '@/store/user/selectors';
+import { isDev } from '@/utils/env';
 
 import KlavisServerList from '../components/KlavisServerList';
 
@@ -37,13 +39,24 @@ const ProSettingsStep = memo<ProSettingsStepProps>(({ onBack }) => {
   const [isNavigating, setIsNavigating] = useState(false);
   const isNavigatingRef = useRef(false);
 
-  const handleFinish = useCallback(() => {
+  const handleFinish = useCallback(async () => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     setIsNavigating(true);
-    finishOnboarding();
-    navigate('/');
-  }, [finishOnboarding, navigate]);
+
+    if (!isDev) {
+      await updateDefaultModel(
+        ONBOARDING_PRODUCTION_DEFAULT_MODEL.model,
+        ONBOARDING_PRODUCTION_DEFAULT_MODEL.provider,
+      );
+    }
+
+    await finishOnboarding();
+
+    if (!isDev) {
+      navigate('/');
+    }
+  }, [finishOnboarding, navigate, updateDefaultModel]);
 
   const handleBack = useCallback(() => {
     if (isNavigatingRef.current) return;
@@ -67,13 +80,22 @@ const ProSettingsStep = memo<ProSettingsStepProps>(({ onBack }) => {
       {/* Default Model Section */}
       <Flexbox gap={16}>
         <Text color={cssVar.colorTextSecondary}>{t('proSettings.model.title')}</Text>
-        <ModelSelect
-          showAbility={false}
-          size="large"
-          style={{ width: '100%' }}
-          value={defaultAgentConfig}
-          onChange={handleModelChange}
-        />
+        {isDev ? (
+          <ModelSelect
+            showAbility={false}
+            size="large"
+            style={{ width: '100%' }}
+            value={defaultAgentConfig}
+            onChange={handleModelChange}
+          />
+        ) : (
+          <Text color={cssVar.colorTextSecondary}>
+            {t('proSettings.model.fixed', {
+              model: ONBOARDING_PRODUCTION_DEFAULT_MODEL.model,
+              provider: ONBOARDING_PRODUCTION_DEFAULT_MODEL.provider,
+            })}
+          </Text>
+        )}
       </Flexbox>
 
       {/* Connectors Section (only show if Klavis is enabled) */}

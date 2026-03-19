@@ -31,6 +31,7 @@ export const config = {
     '/share(.*)',
 
     '/onboarding',
+    '/onboarding(.*)',
 
     '/signup(.*)',
     '/signin(.*)',

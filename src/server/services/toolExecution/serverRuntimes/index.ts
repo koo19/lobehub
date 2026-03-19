@@ -20,6 +20,7 @@ import { toolsActivatorRuntime } from './tools';
 import { topicReferenceRuntime } from './topicReference';
 import { type ServerRuntimeFactory, type ServerRuntimeRegistration } from './types';
 import { webBrowsingRuntime } from './webBrowsing';
+import { webOnboardingRuntime } from './webOnboarding';
 
 /**
  * Registry of server runtime factories by identifier
@@ -49,6 +50,7 @@ registerRuntimes([
   localSystemRuntime,
   remoteDeviceRuntime,
   topicReferenceRuntime,
+  webOnboardingRuntime,
 ]);
 
 // ==================== Registry API ====================

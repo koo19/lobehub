@@ -6,6 +6,7 @@ import {
 } from '@lobechat/types';
 import {
   Plans,
+  UserAgentOnboardingSchema,
   UserGuideSchema,
   UserOnboardingSchema,
   UserPreferenceSchema,
@@ -25,6 +26,7 @@ import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { FileS3 } from '@/server/modules/S3';
 import { FileService } from '@/server/services/file';
+import { OnboardingService } from '@/server/services/onboarding';
 
 const usernameSchema = z
   .string()
@@ -94,6 +96,7 @@ export const userRouter = router({
       // Has conversation if there are messages or has created any assistant
       hasConversation: hasAnyMessages || hasExtraSession,
 
+      agentOnboarding: state.agentOnboarding,
       interests: state.interests,
 
       // always return true for community version
@@ -188,6 +191,24 @@ export const userRouter = router({
   updateInterests: userProcedure.input(z.array(z.string())).mutation(async ({ ctx, input }) => {
     return ctx.userModel.updateUser({ interests: input });
   }),
+
+  getOrCreateAgentOnboardingContext: userProcedure.query(async ({ ctx }) => {
+    const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+    return onboardingService.getOrCreateContext();
+  }),
+
+  resetAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {
+    const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+    return onboardingService.reset();
+  }),
+
+  updateAgentOnboarding: userProcedure
+    .input(UserAgentOnboardingSchema)
+    .mutation(async ({ ctx, input }) => {
+      return ctx.userModel.updateUser({ agentOnboarding: input });
+    }),
 
   updateOnboarding: userProcedure.input(UserOnboardingSchema).mutation(async ({ ctx, input }) => {
     return ctx.userModel.updateUser({ onboarding: input });

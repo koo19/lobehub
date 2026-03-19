@@ -1,4 +1,13 @@
 export default {
+  'agent.modeSwitch.agent': 'Conversational',
+  'agent.modeSwitch.classic': 'Classic',
+  'agent.modeSwitch.label': 'Choose your onboarding mode',
+  'agent.subtitle': 'Complete setup in a dedicated onboarding conversation.',
+  'agent.summaryHint': 'Finish here if the setup summary looks right.',
+  'agent.telemetryAllow': 'Allow telemetry',
+  'agent.telemetryDecline': 'No thanks',
+  'agent.telemetryHint': 'You can also answer in your own words.',
+  'agent.title': 'Conversation Onboarding',
   'back': 'Back',
   'finish': 'Get Started',
   'interests.area.business': 'Business & Strategy',
@@ -33,6 +42,8 @@ export default {
   'next': 'Next',
   'proSettings.connectors.title': 'Connect Your Favorite Tools',
   'proSettings.devMode.title': 'Developer Mode',
+  'proSettings.model.fixed':
+    'Default model is preset to {{provider}}/{{model}} in this environment.',
   'proSettings.model.title': 'Default Model Used by the Agent',
   'proSettings.title': 'Configure Advanced Options in Advance',
   'proSettings.title2': 'Try Connecting Some Common Tools~',

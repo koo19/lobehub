@@ -221,6 +221,7 @@
     "@lobechat/builtin-tool-tools": "workspace:*",
     "@lobechat/builtin-tool-topic-reference": "workspace:*",
     "@lobechat/builtin-tool-web-browsing": "workspace:*",
+    "@lobechat/builtin-tool-web-onboarding": "workspace:*",
     "@lobechat/builtin-tools": "workspace:*",
     "@lobechat/business-config": "workspace:*",
     "@lobechat/business-const": "workspace:*",

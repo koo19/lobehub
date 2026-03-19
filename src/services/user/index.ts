@@ -3,6 +3,7 @@ import { type PartialDeep } from 'type-fest';
 import { lambdaClient } from '@/libs/trpc/client';
 import {
   type SSOProvider,
+  type UserAgentOnboarding,
   type UserGuide,
   type UserInitializationState,
   type UserOnboarding,
@@ -27,8 +28,24 @@ export class UserService {
     return lambdaClient.user.getUserSSOProviders.query();
   };
 
+  getOrCreateAgentOnboardingContext = async (): Promise<{
+    agentId: string;
+    agentOnboarding: UserAgentOnboarding;
+    topicId: string;
+  }> => {
+    return lambdaClient.user.getOrCreateAgentOnboardingContext.query();
+  };
+
   makeUserOnboarded = async () => {
     return lambdaClient.user.makeUserOnboarded.mutate();
+  };
+
+  resetAgentOnboarding = async () => {
+    return lambdaClient.user.resetAgentOnboarding.mutate();
+  };
+
+  updateAgentOnboarding = async (agentOnboarding: UserAgentOnboarding) => {
+    return lambdaClient.user.updateAgentOnboarding.mutate(agentOnboarding);
   };
 
   updateOnboarding = async (onboarding: UserOnboarding) => {
