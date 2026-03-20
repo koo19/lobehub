@@ -4,6 +4,8 @@ import { lambdaClient } from '@/libs/trpc/client';
 import {
   type SSOProvider,
   type UserAgentOnboarding,
+  type UserAgentOnboardingDraft,
+  type UserAgentOnboardingNode,
   type UserGuide,
   type UserInitializationState,
   type UserOnboarding,
@@ -34,6 +36,29 @@ export class UserService {
     topicId: string;
   }> => {
     return lambdaClient.user.getOrCreateAgentOnboardingContext.query();
+  };
+
+  getAgentOnboardingContext = async () => {
+    return lambdaClient.user.getAgentOnboardingContext.query();
+  };
+
+  proposeAgentOnboardingPatch = async (params: {
+    node: UserAgentOnboardingNode;
+    patch: UserAgentOnboardingDraft;
+  }) => {
+    return lambdaClient.user.proposeAgentOnboardingPatch.mutate(params);
+  };
+
+  commitAgentOnboardingNode = async (node: UserAgentOnboardingNode) => {
+    return lambdaClient.user.commitAgentOnboardingNode.mutate({ node });
+  };
+
+  redirectAgentOnboardingOfftopic = async (reason?: string) => {
+    return lambdaClient.user.redirectAgentOnboardingOfftopic.mutate({ reason });
+  };
+
+  finishAgentOnboarding = async () => {
+    return lambdaClient.user.finishAgentOnboarding.mutate();
   };
 
   makeUserOnboarded = async () => {

@@ -16,6 +16,7 @@ import { SkillsManifest } from '@lobechat/builtin-tool-skills';
 import { LobeToolsManifest } from '@lobechat/builtin-tool-tools';
 import { TopicReferenceManifest } from '@lobechat/builtin-tool-topic-reference';
 import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
+import { WebOnboardingManifest } from '@lobechat/builtin-tool-web-onboarding';
 
 export const builtinToolIdentifiers: string[] = [
   AgentBuilderManifest.identifier,
@@ -36,4 +37,5 @@ export const builtinToolIdentifiers: string[] = [
   TopicReferenceManifest.identifier,
   LobeToolsManifest.identifier,
   SkillStoreManifest.identifier,
+  WebOnboardingManifest.identifier,
 ];

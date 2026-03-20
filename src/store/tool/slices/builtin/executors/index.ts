@@ -24,6 +24,7 @@ import { skillStoreExecutor } from './lobe-skill-store';
 import { skillsExecutor } from './lobe-skills';
 import { toolsActivatorExecutor } from './lobe-tools';
 import { webBrowsing } from './lobe-web-browsing';
+import { webOnboardingExecutor } from './lobe-web-onboarding';
 
 // ==================== Import and register all executors ====================
 
@@ -144,5 +145,6 @@ registerExecutors([
   skillsExecutor,
   toolsActivatorExecutor,
   topicReferenceExecutor,
+  webOnboardingExecutor,
   webBrowsing,
 ]);

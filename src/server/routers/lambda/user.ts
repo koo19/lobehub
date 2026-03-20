@@ -6,6 +6,8 @@ import {
 } from '@lobechat/types';
 import {
   Plans,
+  UserAgentOnboardingDraftSchema,
+  UserAgentOnboardingNodeSchema,
   UserAgentOnboardingSchema,
   UserGuideSchema,
   UserOnboardingSchema,
@@ -196,6 +198,55 @@ export const userRouter = router({
     const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
     return onboardingService.getOrCreateContext();
+  }),
+
+  getAgentOnboardingContext: userProcedure.query(async ({ ctx }) => {
+    const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+    return onboardingService.getContext();
+  }),
+
+  proposeAgentOnboardingPatch: userProcedure
+    .input(
+      z.object({
+        node: UserAgentOnboardingNodeSchema,
+        patch: UserAgentOnboardingDraftSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+      return onboardingService.proposePatch(input);
+    }),
+
+  commitAgentOnboardingNode: userProcedure
+    .input(
+      z.object({
+        node: UserAgentOnboardingNodeSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+      return onboardingService.commitNode(input.node);
+    }),
+
+  redirectAgentOnboardingOfftopic: userProcedure
+    .input(
+      z.object({
+        reason: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+      return onboardingService.redirectOfftopic(input.reason);
+    }),
+
+  finishAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {
+    const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+    return onboardingService.finish();
   }),
 
   resetAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {
