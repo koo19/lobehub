@@ -9,6 +9,8 @@ import { useTranslation } from 'react-i18next';
 
 import NavHeader from '@/features/NavHeader';
 import { useResourceManagerStore } from '@/routes/(main)/resource/features/store';
+import { getExplorerSelectedCount } from '@/routes/(main)/resource/features/store/selectors';
+import { useFileStore } from '@/store/file';
 import { FilesTabs } from '@/types/files';
 
 import AddButton from '../../Header/AddButton';
@@ -34,8 +36,13 @@ const Header = memo(() => {
       s.selectAllState,
       s.selectedFileIds,
     ]);
-  const selectCount = selectFileIds.length;
-  const hasSelected = selectCount > 0;
+  const total = useFileStore((s) => s.total);
+  const selectCount = getExplorerSelectedCount({
+    selectAllState,
+    selectedIds: selectFileIds,
+    total,
+  });
+  const hasSelected = selectAllState === 'all' || selectCount > 0;
 
   // If no libraryId, show category name or "Resource" for All
   const leftContent = hasSelected ? (

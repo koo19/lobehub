@@ -27,11 +27,26 @@ const ListViewHeader = ({ columnWidths, data, hasMore }: ListViewHeaderProps) =>
   const { t } = useTranslation(['components', 'file']);
   const updateColumnWidth = useGlobalStore((s) => s.updateResourceManagerColumnWidth);
   const { handleSelectAll, handleSelectAllResources } = useExplorerSelectionActions(data);
-  const { allSelected, indeterminate, selectAllState, selectedFileIds, showSelectAllHint, total } =
-    useExplorerSelectionSummary({
-      data,
-      hasMore,
-    });
+  const {
+    allSelected,
+    indeterminate,
+    selectAllState,
+    selectedCount,
+    showSelectAllHint,
+    total,
+  } = useExplorerSelectionSummary({
+    data,
+    hasMore,
+  });
+  const isAllResultsSelected = selectAllState === 'all' && total === selectedCount;
+  const selectedLabelKey =
+    selectAllState === 'all'
+      ? total
+        ? isAllResultsSelected
+          ? 'FileManager.total.allSelectedCount'
+          : 'FileManager.total.selectedCount'
+        : 'FileManager.total.allSelectedFallback'
+      : 'FileManager.total.selectedCount';
 
   return (
     <>
@@ -61,18 +76,11 @@ const ListViewHeader = ({ columnWidths, data, hasMore }: ListViewHeaderProps) =>
             width: columnWidths.name,
           }}
         >
-          {selectedFileIds.length > 0 || selectAllState === 'all'
-            ? t(
-                selectAllState === 'all'
-                  ? total
-                    ? 'FileManager.total.allSelectedCount'
-                    : 'FileManager.total.allSelectedFallback'
-                  : 'FileManager.total.selectedCount',
-                {
-                  count: selectAllState === 'all' ? total : selectedFileIds.length,
-                  ns: 'components',
-                },
-              )
+          {selectedCount > 0 || selectAllState === 'all'
+            ? t(selectedLabelKey, {
+                count: selectedCount,
+                ns: 'components',
+              })
             : t('FileManager.title.title')}
           <ColumnResizeHandle
             column="name"
@@ -116,7 +124,7 @@ const ListViewHeader = ({ columnWidths, data, hasMore }: ListViewHeaderProps) =>
       <ListViewSelectAllHint
         dataLength={data.length}
         selectAllState={selectAllState}
-        selectedCount={selectedFileIds.length}
+        selectedCount={selectedCount}
         showSelectAllHint={showSelectAllHint}
         total={total}
         onSelectAllResources={handleSelectAllResources}

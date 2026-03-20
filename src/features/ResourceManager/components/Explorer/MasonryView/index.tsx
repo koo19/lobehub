@@ -137,10 +137,11 @@ const MasonryView = memo(function MasonryView({
   });
   const { handleSelectAll, handleSelectAllResources, selectAllState, selectedFileIds, toggleItemSelection } =
     useExplorerSelectionActions(data);
-  const { allSelected, indeterminate, showSelectAllHint } = useExplorerSelectionSummary({
+  const { allSelected, indeterminate, selectedCount, showSelectAllHint } = useExplorerSelectionSummary({
     data,
     hasMore,
   });
+  const isAllResultsSelected = selectAllState === 'all' && total === selectedCount;
 
   // Handle automatic load more when scrolling to bottom
   const handleLoadMore = useCallback(async () => {
@@ -204,15 +205,17 @@ const MasonryView = memo(function MasonryView({
         <Flexbox horizontal align={'center'} className={styles.toolbar} gap={8}>
           <Checkbox checked={allSelected} indeterminate={indeterminate} onChange={handleSelectAll} />
           <span>
-            {selectedFileIds.length > 0 || selectAllState === 'all'
+            {selectedCount > 0 || selectAllState === 'all'
               ? t(
                   selectAllState === 'all'
                     ? total
-                      ? 'FileManager.total.allSelectedCount'
+                      ? isAllResultsSelected
+                        ? 'FileManager.total.allSelectedCount'
+                        : 'FileManager.total.selectedCount'
                       : 'FileManager.total.allSelectedFallback'
                     : 'FileManager.total.selectedCount',
                   {
-                    count: selectAllState === 'all' ? total : selectedFileIds.length,
+                    count: selectedCount,
                     ns: 'components',
                   },
                 )
@@ -235,11 +238,13 @@ const MasonryView = memo(function MasonryView({
               {t(
                 selectAllState === 'all'
                   ? total
-                    ? 'FileManager.total.allSelectedCount'
+                    ? isAllResultsSelected
+                      ? 'FileManager.total.allSelectedCount'
+                      : 'FileManager.total.selectedCount'
                     : 'FileManager.total.allSelectedFallback'
                   : 'FileManager.total.loadedSelectedCount',
                 {
-                  count: selectAllState === 'all' ? total : selectedFileIds.length,
+                  count: selectedCount,
                   ns: 'components',
                 },
               )}

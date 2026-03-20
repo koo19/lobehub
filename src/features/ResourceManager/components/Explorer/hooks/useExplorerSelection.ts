@@ -2,7 +2,11 @@ import { useCallback, useMemo } from 'react';
 
 import { useEventCallback } from '@/hooks/useEventCallback';
 import { useResourceManagerStore } from '@/routes/(main)/resource/features/store';
-import { getExplorerSelectAllUiState } from '@/routes/(main)/resource/features/store/selectors';
+import {
+  getExplorerSelectAllUiState,
+  getExplorerSelectedCount,
+  isExplorerItemSelected,
+} from '@/routes/(main)/resource/features/store/selectors';
 import { useFileStore } from '@/store/file';
 
 interface ExplorerSelectionOptions {
@@ -16,6 +20,10 @@ export const useExplorerSelectionSummary = ({ data, hasMore }: ExplorerSelection
     s.selectedFileIds,
   ]);
   const total = useFileStore((s) => s.total);
+  const selectedCount = useMemo(
+    () => getExplorerSelectedCount({ selectAllState, selectedIds: selectedFileIds, total }),
+    [selectAllState, selectedFileIds, total],
+  );
 
   const uiState = useMemo(
     () =>
@@ -30,6 +38,7 @@ export const useExplorerSelectionSummary = ({ data, hasMore }: ExplorerSelection
 
   return {
     ...uiState,
+    selectedCount,
     selectAllState,
     selectedFileIds,
     total,
@@ -53,14 +62,31 @@ export const useExplorerSelectionActions = (data: Array<{ id: string }>) => {
     s.selectAllState,
   ]);
 
-  const handleSelectAll = useEventCallback(() => {
+  const handleSelectAll = useEventCallback((checked?: boolean) => {
     const store = useResourceManagerStore.getState();
     const allLoadedSelected =
-      data.length > 0 && data.every((item) => store.selectedFileIds.includes(item.id));
+      data.length > 0 &&
+      data.every((item) =>
+        isExplorerItemSelected({
+          id: item.id,
+          selectAllState: store.selectAllState,
+          selectedIds: store.selectedFileIds,
+        }),
+      );
 
-    if (store.selectAllState === 'all' || allLoadedSelected) {
-      setSelectedFileIds([]);
+    if (checked === false || (store.selectAllState !== 'all' && allLoadedSelected)) {
       clearSelectAllState();
+      return;
+    }
+
+    if (store.selectAllState === 'all') {
+      const loadedIds = new Set(data.map((item) => item.id));
+      const nextExcludedIds = store.selectedFileIds.filter((id) => !loadedIds.has(id));
+
+      if (nextExcludedIds.length !== store.selectedFileIds.length) {
+        setSelectedFileIds(nextExcludedIds);
+      }
+
       return;
     }
 
@@ -73,9 +99,23 @@ export const useExplorerSelectionActions = (data: Array<{ id: string }>) => {
 
   const toggleItemSelection = useCallback(
     (id: string, checked: boolean) => {
+      const { selectAllState: currentSelectAllState, selectedFileIds: currentSelected } =
+        useResourceManagerStore.getState();
+
+      if (currentSelectAllState === 'all') {
+        if (checked) {
+          if (!currentSelected.includes(id)) return;
+          setSelectedFileIds(currentSelected.filter((item) => item !== id));
+          return;
+        }
+
+        if (currentSelected.includes(id)) return;
+        setSelectedFileIds([...currentSelected, id]);
+        return;
+      }
+
       clearSelectAllState();
 
-      const currentSelected = useResourceManagerStore.getState().selectedFileIds;
       if (checked) {
         if (currentSelected.includes(id)) return;
         setSelectedFileIds([...currentSelected, id]);

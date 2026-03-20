@@ -1,5 +1,6 @@
 import { memo } from 'react';
 
+import { isExplorerItemSelected } from '@/routes/(main)/resource/features/store/selectors';
 import { type FileListItem } from '@/types/files';
 
 import MasonryFileItem from '.';
@@ -25,7 +26,11 @@ const MasonryItemWrapper = memo<MasonryItemWrapperProps>(({ data: item, context 
     <div style={{ padding: '8px 4px' }}>
       <MasonryFileItem
         knowledgeBaseId={context.knowledgeBaseId}
-        selected={context.selectAllState === 'all' || context.selectFileIds.includes(item.id)}
+        selected={isExplorerItemSelected({
+          id: item.id,
+          selectAllState: context.selectAllState,
+          selectedIds: context.selectFileIds,
+        })}
         onSelectedChange={context.onSelectedChange}
         {...item}
       />

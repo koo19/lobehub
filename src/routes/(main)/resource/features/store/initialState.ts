@@ -34,7 +34,8 @@ export interface State {
    */
   selectAllState: SelectAllState;
   /**
-   * Selected file IDs in the file explorer
+   * Selected file IDs in the file explorer.
+   * When selectAllState === 'all', this stores excluded IDs instead.
    */
   selectedFileIds: string[];
   /**

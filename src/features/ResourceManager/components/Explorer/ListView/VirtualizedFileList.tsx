@@ -4,6 +4,7 @@ import type { VirtuosoHandle } from 'react-virtuoso';
 import { Virtuoso } from 'react-virtuoso';
 
 import { useResourceManagerStore } from '@/routes/(main)/resource/features/store';
+import { isExplorerItemSelected } from '@/routes/(main)/resource/features/store/selectors';
 import type { FileListItem } from '@/types/files';
 
 import { useExplorerSelectionActions } from '../hooks/useExplorerSelection';
@@ -102,7 +103,11 @@ const VirtualizedFileList = ({
               columnWidths={columnWidths}
               index={index}
               key={item.id}
-              selected={selectAllState === 'all' || selectedFileIds.includes(item.id)}
+              selected={isExplorerItemSelected({
+                id: item.id,
+                selectAllState,
+                selectedIds: selectedFileIds,
+              })}
               onSelectedChange={handleSelectionChange}
               {...item}
             />

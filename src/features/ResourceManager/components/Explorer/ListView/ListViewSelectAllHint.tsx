@@ -23,6 +23,7 @@ const ListViewSelectAllHint = ({
   total,
 }: ListViewSelectAllHintProps) => {
   const { t } = useTranslation('components');
+  const isAllResultsSelected = selectAllState === 'all' && total === selectedCount;
 
   if (!showSelectAllHint) return null;
 
@@ -32,11 +33,13 @@ const ListViewSelectAllHint = ({
         {t(
           selectAllState === 'all'
             ? total
-              ? 'FileManager.total.allSelectedCount'
+              ? isAllResultsSelected
+                ? 'FileManager.total.allSelectedCount'
+                : 'FileManager.total.selectedCount'
               : 'FileManager.total.allSelectedFallback'
             : 'FileManager.total.loadedSelectedCount',
           {
-            count: selectAllState === 'all' ? total : selectedCount,
+            count: selectedCount,
           },
         )}
       </span>

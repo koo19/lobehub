@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { shallow } from 'zustand/shallow';
 
 import { useResourceManagerStore } from '@/routes/(main)/resource/features/store';
+import { isExplorerItemSelected } from '@/routes/(main)/resource/features/store/selectors';
 import { fileManagerSelectors, useFileStore } from '@/store/file';
 import type { FileListItem as FileListItemType } from '@/types/files';
 import { formatSize } from '@/utils/format';
@@ -69,7 +70,11 @@ const FileListItem = ({
     (s) => ({
       isPendingRename: s.pendingRenameItemId === id,
       libraryId: s.libraryId,
-      selected: s.selectAllState === 'all' || s.selectedFileIds.includes(id),
+      selected: isExplorerItemSelected({
+        id,
+        selectAllState: s.selectAllState,
+        selectedIds: s.selectedFileIds,
+      }),
       setPendingRenameItemId: s.setPendingRenameItemId,
     }),
     shallow,

@@ -37,7 +37,7 @@ export class ResourceManagerStoreActionImpl {
   }
 
   clearSelectAllState = (): void => {
-    this.#set({ selectAllState: 'none' });
+    this.#set({ selectAllState: 'none', selectedFileIds: [] });
   };
 
   handleBackToList = (): void => {
@@ -55,7 +55,7 @@ export class ResourceManagerStoreActionImpl {
 
     switch (type) {
       case 'delete': {
-        if (selectAllState === 'all' && fileStore.queryParams) {
+        if (selectAllState === 'all' && selectedFileIds.length === 0 && fileStore.queryParams) {
           const { resourceService } = await import('@/services/resource');
 
           await resourceService.deleteResourcesByQuery(fileStore.queryParams as any);
@@ -65,7 +65,10 @@ export class ResourceManagerStoreActionImpl {
           return;
         }
 
-        await fileStore.deleteResources(selectedFileIds);
+        const resourceIds =
+          selectAllState === 'all' ? await resolveSelectedResourceIds() : selectedFileIds;
+
+        await fileStore.deleteResources(resourceIds);
 
         this.#set({ selectedFileIds: [] });
         return;
@@ -120,7 +123,7 @@ export class ResourceManagerStoreActionImpl {
     if (!queryParams) return selectedFileIds;
 
     const result = await resourceService.resolveSelectionIds(queryParams as any);
-    return result.ids;
+    return result.ids.filter((id) => !selectedFileIds.includes(id));
   };
 
   selectAllLoadedResources = (selectedFileIds: string[]): void => {
@@ -128,7 +131,7 @@ export class ResourceManagerStoreActionImpl {
   };
 
   selectAllResources = (): void => {
-    this.#set({ selectAllState: 'all' });
+    this.#set({ selectAllState: 'all', selectedFileIds: [] });
   };
 
   setCategory = (category: FilesTabs): void => {
@@ -163,7 +166,8 @@ export class ResourceManagerStoreActionImpl {
     const { selectAllState } = this.#get();
 
     this.#set({
-      selectAllState: selectedFileIds.length === 0 ? 'none' : selectAllState,
+      selectAllState:
+        selectedFileIds.length === 0 && selectAllState !== 'all' ? 'none' : selectAllState,
       selectedFileIds,
     });
   };
