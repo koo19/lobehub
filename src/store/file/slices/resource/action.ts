@@ -173,10 +173,13 @@ export class ResourceActionImpl {
     nextMap.set(resource.id, resource);
 
     const targetIndex = resourceList.findIndex((item) => item.id === targetId);
-    const nextList =
-      targetIndex === -1
-        ? [resource, ...resourceList.filter((item) => item.id !== resource.id)]
-        : resourceList.map((item) => (item.id === targetId ? resource : item));
+    const nextList = resourceList.filter((item) => item.id !== targetId && item.id !== resource.id);
+    const shouldInsert = this.#isResourceVisibleInCurrentQuery(resource);
+
+    if (shouldInsert) {
+      const insertIndex = targetIndex === -1 ? 0 : Math.min(targetIndex, nextList.length);
+      nextList.splice(insertIndex, 0, resource);
+    }
 
     this.#set(
       {
@@ -186,6 +189,35 @@ export class ResourceActionImpl {
       false,
       'resource/replaceLocalResource',
     );
+  };
+
+  #isResourceVisibleInCurrentQuery = (resource: ResourceItem): boolean => {
+    const { queryParams, resourceMap } = this.#get();
+
+    if (!queryParams) return false;
+
+    if (
+      queryParams.libraryId !== undefined &&
+      (resource.knowledgeBaseId ?? undefined) !== queryParams.libraryId
+    ) {
+      return false;
+    }
+
+    const keyword = queryParams.q?.trim().toLowerCase();
+    if (keyword) {
+      const candidate = `${resource.name} ${resource.title ?? ''}`.trim().toLowerCase();
+      if (!candidate.includes(keyword)) return false;
+    }
+
+    if (queryParams.parentId == null) {
+      return (resource.parentId ?? null) === null;
+    }
+
+    if (!resource.parentId) return false;
+    if (resource.parentId === queryParams.parentId) return true;
+
+    const parentResource = resourceMap.get(resource.parentId);
+    return parentResource?.slug === queryParams.parentId;
   };
 
   #patchLocalResourceEntries = (

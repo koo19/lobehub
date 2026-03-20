@@ -44,7 +44,11 @@ export const mergeServerResourcesWithOptimistic = (
     ...optimisticOnlyItems,
     ...serverItems.map((item) => optimisticById.get(item.id) ?? item),
   ];
-  const mergedMap = new Map(mergedList.map((item) => [item.id, item]));
+  const mergedMap = new Map(localResourceMap);
+
+  for (const item of mergedList) {
+    mergedMap.set(item.id, item);
+  }
 
   return {
     changed:
