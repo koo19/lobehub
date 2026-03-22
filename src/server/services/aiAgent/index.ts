@@ -455,6 +455,15 @@ export class AiAgentService {
       toolManifestMap[id] = manifest;
     });
 
+    // Build complete manifest map (including disabled tools) for step-level dynamic activation.
+    // When lobe-tools / lobe-skills activate a tool mid-conversation, ToolResolver needs
+    // the manifest to inject it — even if it was initially disabled by enableChecker.
+    const allPluginManifests = toolsEngine.getAllPluginManifests();
+    const allManifestMap: Record<string, any> = {};
+    allPluginManifests.forEach((manifest, id) => {
+      allManifestMap[id] = manifest;
+    });
+
     // Build toolSourceMap for routing tool execution
     const toolSourceMap: Record<string, 'builtin' | 'plugin' | 'mcp' | 'klavis' | 'lobehubSkill'> =
       {};
@@ -803,6 +812,7 @@ export class AiAgentService {
         stepWebhook,
         stream,
         toolSet: {
+          allManifestMap,
           enabledToolIds: toolsResult.enabledToolIds,
           manifestMap: toolManifestMap,
           sourceMap: toolSourceMap,

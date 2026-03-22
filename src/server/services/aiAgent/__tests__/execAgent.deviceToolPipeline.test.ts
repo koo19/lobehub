@@ -99,6 +99,7 @@ vi.mock('@/server/modules/Mecha', () => {
 
   mockCreateServerAgentToolsEngine.mockReturnValue({
     generateToolsDetailed: mockGenerateToolsDetailed,
+    getAllPluginManifests: vi.fn().mockReturnValue(new Map()),
     getEnabledPluginManifests: mockGetEnabledPluginManifests,
   });
 

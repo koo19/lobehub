@@ -113,6 +113,7 @@ vi.mock('@/server/modules/Mecha', () => ({
       enabledToolIds: [],
       filteredTools: [],
     }),
+    getAllPluginManifests: vi.fn().mockReturnValue(new Map()),
     getEnabledPluginManifests: vi.fn().mockReturnValue(new Map()),
   }),
   serverMessagesEngine: vi.fn().mockResolvedValue([]),

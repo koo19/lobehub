@@ -165,6 +165,12 @@ export type ActivationSource = 'active_tools' | 'mention' | 'device' | 'discover
  * Operation-level tool set: determined at createOperation time, immutable during execution.
  */
 export interface OperationToolSet {
+  /**
+   * Complete manifest map including disabled tools.
+   * Used by buildStepToolDelta to look up manifests for dynamically activated tools
+   * (via lobe-tools / lobe-skills) that were not in the initial enabled set.
+   */
+  allManifestMap?: Record<string, LobeToolManifest>;
   enabledToolIds: string[];
   manifestMap: Record<string, LobeToolManifest>;
   sourceMap: Record<string, ToolSource>;

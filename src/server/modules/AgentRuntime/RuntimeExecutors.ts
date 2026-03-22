@@ -133,7 +133,9 @@ export const createRuntimeExecutors = (
     };
 
     const stepDelta = buildStepToolDelta({
+      activatedToolIds: state.metadata?.activatedToolIds,
       activeDeviceId,
+      allManifestMap: operationToolSet.allManifestMap,
       forceFinish: state.forceFinish,
       localSystemManifest: LocalSystemManifest as unknown as LobeToolManifest,
       operationManifestMap: operationToolSet.manifestMap,

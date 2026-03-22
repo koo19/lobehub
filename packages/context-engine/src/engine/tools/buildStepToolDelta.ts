@@ -2,9 +2,19 @@ import type { LobeToolManifest, StepToolDelta } from './types';
 
 export interface BuildStepToolDeltaParams {
   /**
+   * Tool IDs activated via lobe-tools / lobe-skills during the conversation.
+   * These are cumulative — once activated, a tool stays active.
+   */
+  activatedToolIds?: string[];
+  /**
    * Currently active device ID (triggers local-system tool injection)
    */
   activeDeviceId?: string;
+  /**
+   * Complete manifest map (including disabled tools) for looking up
+   * manifests of dynamically activated tools.
+   */
+  allManifestMap?: Record<string, LobeToolManifest>;
   /**
    * Force finish flag — strips all tools for pure text output
    */
@@ -51,6 +61,18 @@ export function buildStepToolDelta(params: BuildStepToolDeltaParams): StepToolDe
     for (const id of params.mentionedToolIds) {
       if (!params.operationManifestMap[id]) {
         delta.activatedTools.push({ id, source: 'mention' });
+      }
+    }
+  }
+
+  // Tools activated via lobe-tools / lobe-skills
+  if (params.activatedToolIds?.length && params.allManifestMap) {
+    for (const id of params.activatedToolIds) {
+      if (!params.operationManifestMap[id]) {
+        const manifest = params.allManifestMap[id];
+        if (manifest) {
+          delta.activatedTools.push({ id, manifest, source: 'active_tools' });
+        }
       }
     }
   }

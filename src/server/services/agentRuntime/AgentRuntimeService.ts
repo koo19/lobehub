@@ -1,6 +1,7 @@
 import type { AgentRuntimeContext, AgentState } from '@lobechat/agent-runtime';
 import { AgentRuntime, findInMessages, GeneralChatAgent } from '@lobechat/agent-runtime';
 import type { ISnapshotStore } from '@lobechat/agent-tracing';
+import { LobeToolIdentifier } from '@lobechat/builtin-tool-tools';
 import { dynamicInterventionAudits } from '@lobechat/builtin-tools/dynamicInterventionAudits';
 import { AgentRuntimeErrorType, ChatErrorType, type ChatMessageError } from '@lobechat/types';
 import debug from 'debug';
@@ -573,6 +574,21 @@ export class AgentRuntimeService {
             operationId,
             stepIndex,
             deviceContext.activeDeviceId,
+          );
+        }
+      }
+
+      // Pre-step computation: extract activated tool IDs from DB messages
+      // Tools activated via lobe-tools / lobe-skills are cumulative and persist across steps
+      if (currentState.metadata) {
+        const activatedToolIds = await this.computeActivatedToolIds(currentState);
+        if (activatedToolIds) {
+          currentState.metadata.activatedToolIds = activatedToolIds;
+          log(
+            '[%s][%d] Pre-step: activated tool IDs from messages: %o',
+            operationId,
+            stepIndex,
+            activatedToolIds,
           );
         }
       }
@@ -1549,6 +1565,46 @@ export class AgentRuntimeService {
       );
     } catch (error) {
       log('computeDeviceContext error: %O', error);
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Extract activated tool IDs from DB messages at step boundary.
+   * Tools activated via lobe-tools are cumulative — once activated, they stay active.
+   */
+  private async computeActivatedToolIds(state: any): Promise<string[] | undefined> {
+    try {
+      const dbMessages = await this.messageModel.query({
+        agentId: state.metadata?.agentId,
+        threadId: state.metadata?.threadId,
+        topicId: state.metadata?.topicId,
+      });
+
+      const ids = new Set<string>();
+      for (const msg of dbMessages) {
+        if (
+          msg.role === 'tool' &&
+          (msg as any).plugin?.identifier === LobeToolIdentifier &&
+          (msg as any).pluginState?.activatedTools
+        ) {
+          const activatedTools = (msg as any).pluginState.activatedTools as Array<{
+            identifier?: string;
+          }>;
+          if (Array.isArray(activatedTools)) {
+            for (const tool of activatedTools) {
+              if (tool.identifier) {
+                ids.add(tool.identifier);
+              }
+            }
+          }
+        }
+      }
+
+      return ids.size > 0 ? [...ids] : undefined;
+    } catch (error) {
+      log('computeActivatedToolIds error: %O', error);
     }
 
     return undefined;

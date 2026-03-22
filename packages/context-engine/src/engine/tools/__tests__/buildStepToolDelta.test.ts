@@ -127,6 +127,62 @@ describe('buildStepToolDelta', () => {
     });
   });
 
+  describe('activated tools (lobe-tools / lobe-skills)', () => {
+    it('should activate tools with manifest from allManifestMap', () => {
+      const delta = buildStepToolDelta({
+        activatedToolIds: ['web-search'],
+        allManifestMap: { 'web-search': mockSearchManifest },
+        operationManifestMap: {},
+      });
+
+      expect(delta.activatedTools).toHaveLength(1);
+      expect(delta.activatedTools[0]).toEqual({
+        id: 'web-search',
+        manifest: mockSearchManifest,
+        source: 'active_tools',
+      });
+    });
+
+    it('should skip tools already in operation set', () => {
+      const delta = buildStepToolDelta({
+        activatedToolIds: ['web-search'],
+        allManifestMap: { 'web-search': mockSearchManifest },
+        operationManifestMap: { 'web-search': mockSearchManifest },
+      });
+
+      expect(delta.activatedTools).toHaveLength(0);
+    });
+
+    it('should skip tools not found in allManifestMap', () => {
+      const delta = buildStepToolDelta({
+        activatedToolIds: ['unknown-tool'],
+        allManifestMap: { 'web-search': mockSearchManifest },
+        operationManifestMap: {},
+      });
+
+      expect(delta.activatedTools).toHaveLength(0);
+    });
+
+    it('should not activate when allManifestMap is not provided', () => {
+      const delta = buildStepToolDelta({
+        activatedToolIds: ['web-search'],
+        operationManifestMap: {},
+      });
+
+      expect(delta.activatedTools).toHaveLength(0);
+    });
+
+    it('should handle empty activatedToolIds', () => {
+      const delta = buildStepToolDelta({
+        activatedToolIds: [],
+        allManifestMap: { 'web-search': mockSearchManifest },
+        operationManifestMap: {},
+      });
+
+      expect(delta.activatedTools).toHaveLength(0);
+    });
+  });
+
   describe('combined signals', () => {
     it('should handle device + mentions + forceFinish together', () => {
       const delta = buildStepToolDelta({
@@ -139,6 +195,25 @@ describe('buildStepToolDelta', () => {
 
       expect(delta.activatedTools).toHaveLength(2); // local-system + tool-a
       expect(delta.deactivatedToolIds).toEqual(['*']);
+    });
+
+    it('should handle device + mentions + activated tools together', () => {
+      const delta = buildStepToolDelta({
+        activatedToolIds: ['web-search'],
+        activeDeviceId: 'device-123',
+        allManifestMap: { 'web-search': mockSearchManifest },
+        localSystemManifest: mockLocalSystemManifest,
+        mentionedToolIds: ['tool-a'],
+        operationManifestMap: {},
+      });
+
+      // local-system + tool-a (mention) + web-search (active_tools)
+      expect(delta.activatedTools).toHaveLength(3);
+      expect(delta.activatedTools.map((t) => t.source)).toEqual([
+        'device',
+        'mention',
+        'active_tools',
+      ]);
     });
 
     it('should return empty delta when no signals', () => {
