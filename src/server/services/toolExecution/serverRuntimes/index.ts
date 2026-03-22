@@ -14,6 +14,7 @@ import { calculatorRuntime } from './calculator';
 import { cloudSandboxRuntime } from './cloudSandbox';
 import { localSystemRuntime } from './localSystem';
 import { memoryRuntime } from './memory';
+import { messageRuntime } from './message';
 import { notebookRuntime } from './notebook';
 import { remoteDeviceRuntime } from './remoteDevice';
 import { skillsRuntime } from './skills';
@@ -48,6 +49,8 @@ registerRuntimes([
   skillsRuntime,
   memoryRuntime,
   activatorRuntime,
+  messageRuntime,
+  toolsActivatorRuntime,
   localSystemRuntime,
   remoteDeviceRuntime,
   briefRuntime,
