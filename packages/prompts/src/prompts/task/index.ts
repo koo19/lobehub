@@ -1,3 +1,5 @@
+import type { TaskDetailData, TaskDetailWorkspaceNode } from '@lobechat/types';
+
 // ── Formatting helpers for Task tool responses ──
 
 const priorityLabel = (p?: number | null): string => {
@@ -53,12 +55,15 @@ export interface TaskSummary {
   status: string;
 }
 
-export interface TaskDetail extends TaskSummary {
-  dependencies?: Array<{ dependsOn: string; type: string }>;
-  instruction: string;
-  parentTaskId?: string | null;
-  subtasks?: TaskSummary[];
-}
+// Re-export shared types from @lobechat/types for backward compatibility
+export type {
+  TaskDetailBrief,
+  TaskDetailComment,
+  TaskDetailData,
+  TaskDetailSubtask,
+  TaskDetailTopic,
+  TaskDetailWorkspaceNode,
+} from '@lobechat/types';
 
 /**
  * Format a single task as a one-line summary
@@ -104,28 +109,131 @@ export const formatTaskList = (
 /**
  * Format viewTask response
  */
-export const formatTaskDetail = (t: TaskDetail): string => {
+export const formatTaskDetail = (t: TaskDetailData): string => {
   const lines = [
-    `${t.identifier} "${t.name || '(unnamed)'}"`,
-    `  Status: ${statusIcon(t.status)} ${t.status}`,
-    `  Priority: ${priorityLabel(t.priority)}`,
-    `  Instruction: ${t.instruction}`,
+    `${t.identifier} ${t.name || '(unnamed)'}`,
+    `Status: ${statusIcon(t.status)} ${t.status}     Priority: ${priorityLabel(t.priority)}`,
+    `Instruction: ${t.instruction}`,
   ];
 
-  if (t.parentTaskId) lines.push(`  Parent: ${t.parentTaskId}`);
+  if (t.agentId) lines.push(`Agent: ${t.agentId}`);
+  if (t.parent) lines.push(`Parent: ${t.parent.identifier}`);
+  if (t.topicCount) lines.push(`Topics: ${t.topicCount}`);
+  if (t.createdAt) lines.push(`Created: ${t.createdAt}`);
 
+  if (t.dependencies && t.dependencies.length > 0) {
+    lines.push(
+      `Dependencies: ${t.dependencies.map((d) => `${d.type}: ${d.dependsOn}`).join(', ')}`,
+    );
+  }
+
+  // Subtasks
   if (t.subtasks && t.subtasks.length > 0) {
-    lines.push(`  Subtasks (${t.subtasks.length}):`);
+    lines.push('');
+    lines.push('Subtasks:');
     for (const s of t.subtasks) {
-      lines.push(`    ${formatTaskLine(s)}`);
+      const dep = s.blockedBy ? ` ← blocks: ${s.blockedBy}` : '';
+      lines.push(
+        `  ${s.identifier} ${statusIcon(s.status)} ${s.status} ${s.name || '(unnamed)'}${dep}`,
+      );
     }
   }
 
-  if (t.dependencies && t.dependencies.length > 0) {
-    lines.push(`  Dependencies (${t.dependencies.length}):`);
-    for (const d of t.dependencies) {
-      lines.push(`    ${d.type}: ${d.dependsOn}`);
+  // Checkpoint
+  lines.push('');
+  if (t.checkpoint && Object.keys(t.checkpoint).length > 0) {
+    lines.push(`Checkpoint: ${JSON.stringify(t.checkpoint)}`);
+  } else {
+    lines.push('Checkpoint: (not configured, default: onAgentRequest=true)');
+  }
+
+  // Review
+  lines.push('');
+  if (t.review && Object.keys(t.review).length > 0) {
+    const rubrics = (t.review as any).rubrics as
+      | Array<{ name: string; threshold?: number; type: string }>
+      | undefined;
+    lines.push(`Review (maxIterations: ${(t.review as any).maxIterations || 3}):`);
+    if (rubrics) {
+      for (const r of rubrics) {
+        lines.push(
+          `  - ${r.name} [${r.type}]${r.threshold ? ` ≥ ${Math.round(r.threshold * 100)}%` : ''}`,
+        );
+      }
     }
+  } else {
+    lines.push('Review: (not configured)');
+  }
+
+  // Workspace
+  if (t.workspace && t.workspace.length > 0) {
+    const countNodes = (nodes: TaskDetailWorkspaceNode[]): number =>
+      nodes.reduce((sum, n) => sum + 1 + (n.children ? countNodes(n.children) : 0), 0);
+    const total = countNodes(t.workspace);
+    lines.push('');
+    lines.push(`Workspace (${total}):`);
+
+    const renderNodes = (nodes: TaskDetailWorkspaceNode[], indent: string) => {
+      for (const node of nodes) {
+        const isFolder = node.fileType === 'custom/folder';
+        const icon = isFolder ? '📁' : '📄';
+        const source = node.sourceTaskIdentifier ? ` ← ${node.sourceTaskIdentifier}` : '';
+        const sizeStr = !isFolder && node.size ? `  ${node.size} chars` : '';
+        lines.push(
+          `${indent}${icon} ${node.title || 'Untitled'} (${node.documentId})${source}${sizeStr}`,
+        );
+        if (node.children) {
+          renderNodes(node.children, indent + '  ');
+        }
+      }
+    };
+    renderNodes(t.workspace, '  ');
+  }
+
+  // Activities
+  const timelineEntries: { text: string; time: number }[] = [];
+
+  if (t.timeline?.topics) {
+    for (const tp of t.timeline.topics) {
+      const status = tp.status || 'completed';
+      const idSuffix = tp.id ? `  ${tp.id}` : '';
+      timelineEntries.push({
+        text: `  💬 ${tp.time || ''} Topic #${tp.seq || '?'} ${tp.title || 'Untitled'} ${statusIcon(status)} ${status}${idSuffix}`,
+        time: 0,
+      });
+    }
+  }
+
+  if (t.timeline?.briefs) {
+    for (const b of t.timeline.briefs) {
+      let resolved = '';
+      if (b.resolvedAction) {
+        resolved = ` ✏️ ${b.resolvedAction}`;
+      }
+      const priStr = b.priority ? ` [${b.priority}]` : '';
+      const idSuffix = b.id ? `  ${b.id}` : '';
+      timelineEntries.push({
+        text: `  ${briefIcon(b.type)} ${b.time || ''} Brief [${b.type}] ${b.title}${priStr}${resolved}${idSuffix}`,
+        time: 0,
+      });
+    }
+  }
+
+  if (t.timeline?.comments) {
+    for (const c of t.timeline.comments) {
+      const author = c.agentId ? '🤖 agent' : '👤 user';
+      const truncated = c.content.length > 80 ? c.content.slice(0, 80) + '...' : c.content;
+      timelineEntries.push({
+        text: `  💭 ${c.time || ''} ${author} ${truncated}`,
+        time: 0,
+      });
+    }
+  }
+
+  if (timelineEntries.length > 0) {
+    lines.push('');
+    lines.push('Activities:');
+    lines.push(...timelineEntries.map((e) => e.text));
   }
 
   return lines.join('\n');
@@ -207,19 +315,13 @@ export interface TaskRunPromptSubtask {
   status: string;
 }
 
-export interface TaskRunPromptDocument {
+export interface TaskRunPromptWorkspaceNode {
+  children?: TaskRunPromptWorkspaceNode[];
   createdAt?: string;
   documentId: string;
-  /** Character count of the document content */
+  fileType?: string;
   size?: number;
   sourceTaskIdentifier?: string;
-  title?: string;
-}
-
-export interface TaskRunPromptFolder {
-  children: TaskRunPromptDocument[];
-  createdAt?: string;
-  documentId: string;
   title?: string;
 }
 
@@ -260,7 +362,7 @@ export interface TaskRunPromptInput {
     subtasks?: Array<TaskSummary & { blockedBy?: string }>;
   };
   /** Pinned documents (workspace) */
-  workspace?: TaskRunPromptFolder[];
+  workspace?: TaskRunPromptWorkspaceNode[];
 }
 
 // ── Relative time helper ──
@@ -378,21 +480,28 @@ export const buildTaskRunPrompt = (input: TaskRunPromptInput, now?: Date): strin
 
   // Workspace
   if (workspace && workspace.length > 0) {
-    const totalDocs = workspace.reduce((sum, f) => sum + f.children.length, 0);
+    const countNodes = (nodes: TaskRunPromptWorkspaceNode[]): number =>
+      nodes.reduce((sum, n) => sum + 1 + (n.children ? countNodes(n.children) : 0), 0);
+    const total = countNodes(workspace);
     taskLines.push('');
-    taskLines.push(`Workspace (${totalDocs + workspace.length}):`);
-    for (const folder of workspace) {
-      const folderAgo = folder.createdAt ? `  ${timeAgo(folder.createdAt, now)}` : '';
-      taskLines.push(`  📁 ${folder.title || 'Untitled'} (${folder.documentId})${folderAgo}`);
-      for (const d of folder.children) {
-        const source = d.sourceTaskIdentifier ? ` ← ${d.sourceTaskIdentifier}` : '';
-        const sizeStr = d.size ? `  ${d.size} chars` : '';
-        const docAgo = d.createdAt ? `  ${timeAgo(d.createdAt, now)}` : '';
+    taskLines.push(`Workspace (${total}):`);
+
+    const renderNodes = (nodes: TaskRunPromptWorkspaceNode[], indent: string) => {
+      for (const node of nodes) {
+        const isFolder = node.fileType === 'custom/folder';
+        const icon = isFolder ? '📁' : '📄';
+        const source = node.sourceTaskIdentifier ? ` ← ${node.sourceTaskIdentifier}` : '';
+        const sizeStr = !isFolder && node.size ? `  ${node.size} chars` : '';
+        const ago = node.createdAt ? `  ${timeAgo(node.createdAt, now)}` : '';
         taskLines.push(
-          `  └── 📄 ${d.title || 'Untitled'} (${d.documentId})${source}${sizeStr}${docAgo}`,
+          `${indent}${icon} ${node.title || 'Untitled'} (${node.documentId})${source}${sizeStr}${ago}`,
         );
+        if (node.children) {
+          renderNodes(node.children, indent + '  ');
+        }
       }
-    }
+    };
+    renderNodes(workspace, '  ');
   }
 
   // Activities (chronological, flat list)

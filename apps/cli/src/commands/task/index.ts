@@ -160,62 +160,40 @@ export function registerTaskCommand(program: Command) {
       );
       console.log(`${pc.dim('Instruction:')} ${t.instruction}`);
       if (t.description) console.log(`${pc.dim('Description:')} ${t.description}`);
-      if (t.assigneeAgentId) console.log(`${pc.dim('Agent:')} ${t.assigneeAgentId}`);
-      if (t.assigneeUserId) console.log(`${pc.dim('User:')} ${t.assigneeUserId}`);
+      if (t.agentId) console.log(`${pc.dim('Agent:')} ${t.agentId}`);
+      if (t.userId) console.log(`${pc.dim('User:')} ${t.userId}`);
       if (t.parent) {
-        const p = t.parent as any;
-        console.log(`${pc.dim('Parent:')} ${p.identifier} ${p.name || ''}`);
+        console.log(`${pc.dim('Parent:')} ${t.parent.identifier} ${t.parent.name || ''}`);
       }
-      console.log(
-        `${pc.dim('Topics:')} ${t.totalTopics}  ${pc.dim('Created:')} ${timeAgo(t.createdAt)}`,
-      );
-      if (t.heartbeatTimeout && t.lastHeartbeatAt) {
-        const hb = timeAgo(t.lastHeartbeatAt);
-        const interval = t.heartbeatInterval ? `${t.heartbeatInterval}s` : '-';
-        const elapsed = (Date.now() - new Date(t.lastHeartbeatAt).getTime()) / 1000;
-        const isStuck = t.status === 'running' && elapsed > t.heartbeatTimeout;
+      const topicInfo = t.topicCount ? `${t.topicCount}` : '0';
+      const createdInfo = t.createdAt ? timeAgo(t.createdAt) : '-';
+      console.log(`${pc.dim('Topics:')} ${topicInfo}  ${pc.dim('Created:')} ${createdInfo}`);
+      if (t.heartbeat?.timeout && t.heartbeat.lastAt) {
+        const hb = timeAgo(t.heartbeat.lastAt);
+        const interval = t.heartbeat.interval ? `${t.heartbeat.interval}s` : '-';
+        const elapsed = (Date.now() - new Date(t.heartbeat.lastAt).getTime()) / 1000;
+        const isStuck = t.status === 'running' && elapsed > t.heartbeat.timeout;
         console.log(
-          `${pc.dim('Heartbeat:')} ${isStuck ? pc.red(hb) : hb}  ${pc.dim('interval:')} ${interval}  ${pc.dim('timeout:')} ${t.heartbeatTimeout}s${isStuck ? pc.red('  ⚠ TIMEOUT') : ''}`,
+          `${pc.dim('Heartbeat:')} ${isStuck ? pc.red(hb) : hb}  ${pc.dim('interval:')} ${interval}  ${pc.dim('timeout:')} ${t.heartbeat.timeout}s${isStuck ? pc.red('  ⚠ TIMEOUT') : ''}`,
         );
       }
       if (t.error) console.log(`${pc.red('Error:')} ${t.error}`);
 
       // ── Subtasks ──
       if (t.subtasks && t.subtasks.length > 0) {
-        // Build dependency lookup: taskId → [dependsOnIdentifier, ...]
-        const subtaskDeps = (t.subtaskDeps || []) as any[];
-        const idToIdentifier = new Map<string, string>();
-        for (const s of t.subtasks) idToIdentifier.set(s.id, s.identifier);
-
         // Build lookup: which subtasks are completed
-        const completedIds = new Set(
-          t.subtasks.filter((s: any) => s.status === 'completed').map((s: any) => s.id),
+        const completedIdentifiers = new Set(
+          t.subtasks.filter((s) => s.status === 'completed').map((s) => s.identifier),
         );
-
-        const blockedBy = new Map<string, string[]>();
-        const hasUnresolvedDep = new Set<string>();
-        for (const d of subtaskDeps) {
-          if (d.type === 'blocks') {
-            const list = blockedBy.get(d.taskId) || [];
-            const depIdentifier = idToIdentifier.get(d.dependsOnId) || d.dependsOnId;
-            list.push(depIdentifier);
-            blockedBy.set(d.taskId, list);
-            // Check if the dependency is NOT completed
-            if (!completedIds.has(d.dependsOnId)) {
-              hasUnresolvedDep.add(d.taskId);
-            }
-          }
-        }
 
         console.log(`\n${pc.bold('Subtasks:')}`);
         for (const s of t.subtasks) {
-          const deps = blockedBy.get(s.id);
-          const depInfo = deps ? pc.dim(` ← blocks: ${deps.join(', ')}`) : '';
+          const depInfo = s.blockedBy ? pc.dim(` ← blocks: ${s.blockedBy}`) : '';
           // Show 'blocked' instead of 'backlog' if task has unresolved dependencies
-          const displayStatus =
-            s.status === 'backlog' && hasUnresolvedDep.has(s.id) ? 'blocked' : s.status;
+          const isBlocked = s.blockedBy && !completedIdentifiers.has(s.blockedBy);
+          const displayStatus = s.status === 'backlog' && isBlocked ? 'blocked' : s.status;
           console.log(
-            `  ${pc.dim(s.identifier)} ${statusBadge(displayStatus)} ${s.name || s.instruction}${depInfo}`,
+            `  ${pc.dim(s.identifier)} ${statusBadge(displayStatus)} ${s.name || '(unnamed)'}${depInfo}`,
           );
         }
       }
@@ -223,30 +201,31 @@ export function registerTaskCommand(program: Command) {
       // ── Dependencies ──
       if (t.dependencies && t.dependencies.length > 0) {
         console.log(`\n${pc.bold('Dependencies:')}`);
-        for (const d of t.dependencies as any[]) {
-          console.log(`  ${pc.dim(d.type)}: ${d.dependsOnId}`);
+        for (const d of t.dependencies) {
+          const depName = d.name ? ` ${d.name}` : '';
+          console.log(`  ${pc.dim(d.type || 'blocks')}: ${d.dependsOn}${depName}`);
         }
       }
 
       // ── Checkpoint ──
       {
-        const cp = t.checkpoint as any;
+        const cp = t.checkpoint || {};
         console.log(`\n${pc.bold('Checkpoint:')}`);
         const hasConfig =
           cp.onAgentRequest !== undefined ||
           cp.topic?.before ||
           cp.topic?.after ||
-          cp.tasks?.beforeIds?.length > 0 ||
-          cp.tasks?.afterIds?.length > 0;
+          cp.tasks?.beforeIds?.length ||
+          cp.tasks?.afterIds?.length;
 
         if (hasConfig) {
           if (cp.onAgentRequest !== undefined)
             console.log(`  onAgentRequest: ${cp.onAgentRequest}`);
           if (cp.topic?.before) console.log(`  topic.before: ${cp.topic.before}`);
           if (cp.topic?.after) console.log(`  topic.after: ${cp.topic.after}`);
-          if (cp.tasks?.beforeIds?.length > 0)
+          if (cp.tasks?.beforeIds?.length)
             console.log(`  tasks.before: ${cp.tasks.beforeIds.join(', ')}`);
-          if (cp.tasks?.afterIds?.length > 0)
+          if (cp.tasks?.afterIds?.length)
             console.log(`  tasks.after: ${cp.tasks.afterIds.join(', ')}`);
         } else {
           console.log(`  ${pc.dim('(not configured, default: onAgentRequest=true)')}`);
@@ -280,108 +259,93 @@ export function registerTaskCommand(program: Command) {
         }
       }
 
-      // ── Activities (last section) ──
+      // ── Workspace ──
       {
-        // ── Workspace ──
-        {
-          const workspace = t.documents as any;
-          const nodeMap = workspace?.nodeMap || {};
-          const tree = workspace?.tree || [];
-          const docCount = Object.keys(nodeMap).length;
+        const nodes = t.workspace || [];
+        if (nodes.length === 0) {
+          console.log(`\n${pc.bold('Workspace:')}`);
+          console.log(`  ${pc.dim('No documents yet.')}`);
+        } else {
+          const countNodes = (list: typeof nodes): number =>
+            list.reduce((sum, n) => sum + 1 + (n.children ? countNodes(n.children) : 0), 0);
+          console.log(`\n${pc.bold(`Workspace (${countNodes(nodes)}):`)}`);
 
-          if (docCount === 0) {
-            console.log(`\n${pc.bold('Workspace:')}`);
-            console.log(`  ${pc.dim('No documents yet.')}`);
-          } else {
-            console.log(`\n${pc.bold(`Workspace (${docCount}):`)}`);
+          const formatSize = (chars: number | null | undefined) => {
+            if (!chars) return '';
+            if (chars >= 10_000) return `${(chars / 1000).toFixed(1)}k`;
+            return `${chars}`;
+          };
 
-            const formatSize = (chars: number | null) => {
-              if (!chars) return '';
-              if (chars >= 10_000) return `${(chars / 1000).toFixed(1)}k`;
-              return `${chars}`;
-            };
+          const LEFT_COL = 56;
+          const FROM_WIDTH = 10;
 
-            const LEFT_COL = 56; // fixed display width from start to after title (including indent)
-            const FROM_WIDTH = 10;
-
-            const printNode = (node: any, prefix: string, isLast: boolean, isRoot: boolean) => {
-              const doc = nodeMap[node.id];
-              if (!doc) return;
-              const isFolder = doc.fileType === 'folder' || doc.fileType === 'custom/folder';
+          const renderNodes = (list: typeof nodes, indent: string) => {
+            for (let i = 0; i < list.length; i++) {
+              const node = list[i];
+              const isFolder = node.fileType === 'custom/folder';
+              const isLast = i === list.length - 1;
               const icon = isFolder ? '📁' : '📄';
-              const connector = isRoot ? '  ' : isLast ? '  └── ' : '  ├── ';
-
-              // Prefix + connector + icon take variable width; pad title to fill LEFT_COL
-              const leftPrefix = `${prefix}${connector}${icon} `;
-              const prefixWidth = displayWidth(leftPrefix);
-              const maxTitle = Math.max(10, LEFT_COL - prefixWidth);
-              const titleStr = truncate(doc.title, maxTitle);
-              const titleWidth = displayWidth(titleStr);
-              const titlePad = ' '.repeat(Math.max(1, LEFT_COL - prefixWidth - titleWidth));
-
-              // Source column (fixed width)
-              const fromStr = doc.sourceTaskIdentifier ? `← ${doc.sourceTaskIdentifier}` : '';
-              const fromPad = ' '.repeat(Math.max(1, FROM_WIDTH - fromStr.length + 1));
-
-              // Right columns
-              const size =
-                !isFolder && doc.charCount
-                  ? formatSize(doc.charCount).padStart(6) + ' chars'
-                  : ''.padStart(12);
-              const updated = doc.updatedAt ? timeAgo(doc.updatedAt).padStart(7) : '';
-
-              console.log(
-                `${leftPrefix}${titleStr}${titlePad}${pc.dim(`(${node.id})`)}  ${fromStr}${fromPad}${pc.dim(`${size}  ${updated}`)}`,
+              const prefix = `${indent}${icon} `;
+              const titleStr = truncate(node.title || 'Untitled', LEFT_COL - displayWidth(prefix));
+              const titlePad = ' '.repeat(
+                Math.max(1, LEFT_COL - displayWidth(prefix) - displayWidth(titleStr)),
               );
 
-              const kids = node.children || [];
-              const childPrefix = isRoot ? '' : prefix + (isLast ? '      ' : '  │   ');
-              kids.forEach((child: any, i: number) => {
-                printNode(child, childPrefix, i === kids.length - 1, false);
-              });
-            };
+              const fromStr = node.sourceTaskIdentifier ? `← ${node.sourceTaskIdentifier}` : '';
+              const fromPad = fromStr
+                ? ' '.repeat(Math.max(1, FROM_WIDTH - fromStr.length + 1))
+                : '';
+              const size =
+                !isFolder && node.size ? formatSize(node.size).padStart(6) + ' chars' : '';
 
-            tree.forEach((node: any, i: number) => {
-              printNode(node, '', i === tree.length - 1, true);
-            });
-          }
+              console.log(
+                `${prefix}${titleStr}${titlePad}${pc.dim(`(${node.documentId})`)}  ${fromStr}${fromPad}${pc.dim(size)}`,
+              );
+
+              if (node.children && node.children.length > 0) {
+                const childIndent = indent + (isLast ? '  ' : '  ');
+                renderNodes(node.children, childIndent);
+              }
+            }
+          };
+          renderNodes(nodes, '  ');
         }
+      }
 
-        const activities: {
-          data: any;
-          time: number;
-          type: 'topic' | 'brief' | 'comment' | 'review';
-        }[] = [];
+      // ── Activities ──
+      {
+        const tl = t.timeline;
+        const activities: { text: string; time: string }[] = [];
 
-        for (const tp of t.topics || []) {
+        for (const tp of tl?.topics || []) {
+          const sBadge = statusBadge(tp.status || 'running');
           activities.push({
-            data: tp,
-            time: new Date(tp.createdAt).getTime(),
-            type: 'topic',
-          });
-          // Add review as separate activity if topic has been reviewed
-          if (tp.reviewedAt) {
-            activities.push({
-              data: tp,
-              time: new Date(tp.reviewedAt).getTime(),
-              type: 'review',
-            });
-          }
-        }
-
-        for (const b of t.briefs || []) {
-          activities.push({
-            data: b,
-            time: new Date(b.createdAt).getTime(),
-            type: 'brief',
+            text: `  💬 ${pc.dim((tp.time || '').padStart(7))} Topic #${tp.seq || '?'} ${tp.title || 'Untitled'} ${sBadge}  ${pc.dim(tp.id || '')}`,
+            time: tp.time || '',
           });
         }
 
-        for (const c of t.comments || []) {
+        for (const b of tl?.briefs || []) {
+          const icon = briefIcon(b.type);
+          const pri =
+            b.priority === 'urgent'
+              ? pc.red(' [urgent]')
+              : b.priority === 'normal'
+                ? pc.yellow(' [normal]')
+                : '';
+          const resolved = b.resolvedAction ? pc.green(` ✏️ ${b.resolvedAction}`) : '';
+          const typeLabel = pc.dim(`[${b.type}]`);
           activities.push({
-            data: c,
-            time: new Date(c.createdAt).getTime(),
-            type: 'comment',
+            text: `  ${icon} ${pc.dim((b.time || '').padStart(7))} Brief ${typeLabel} ${b.title}${pri}${resolved}  ${pc.dim(b.id || '')}`,
+            time: b.time || '',
+          });
+        }
+
+        for (const c of tl?.comments || []) {
+          const author = c.agentId ? `🤖 ${c.agentId}` : '👤 user';
+          activities.push({
+            text: `  💭 ${pc.dim((c.time || '').padStart(7))} ${pc.cyan(author)} ${c.content}`,
+            time: c.time || '',
           });
         }
 
@@ -389,66 +353,9 @@ export function registerTaskCommand(program: Command) {
         if (activities.length === 0) {
           console.log(`  ${pc.dim('No activities yet.')}`);
         } else {
-          activities.sort((a, b) => a.time - b.time);
-
-          const pad = (s: string, w: number) => s.padStart(w);
-
+          // Activities are already sorted by the service
           for (const act of activities) {
-            const ago = pad(
-              timeAgo(act.type === 'review' ? act.data.reviewedAt : act.data.createdAt),
-              7,
-            );
-
-            if (act.type === 'topic') {
-              const tp = act.data;
-              const sBadge = statusBadge(tp.status || 'running');
-              console.log(
-                `  💬 ${pc.dim(ago)} Topic #${tp.seq} ${tp.title || 'Untitled'} ${sBadge}  ${pc.dim(tp.id)}`,
-              );
-            } else if (act.type === 'review') {
-              const tp = act.data;
-              const passed = tp.reviewPassed === 1;
-              const icon = passed ? pc.green('✓') : pc.red('✗');
-              const scoreText = ((tp.reviewScores as any[]) || [])
-                .map((s: any) => {
-                  const pct = Math.round(s.score * 100);
-                  const sIcon = s.passed ? pc.green('✓') : pc.red('✗');
-                  return `${s.rubricId} ${pct}%${sIcon}`;
-                })
-                .join(' | ');
-              const iter =
-                tp.reviewIteration > 1 ? pc.dim(` (iteration ${tp.reviewIteration})`) : '';
-              console.log(
-                `  🔍 ${pc.dim(ago)} Review ${icon} ${passed ? 'passed' : 'failed'} (${tp.reviewScore}%) ${pc.dim(scoreText)}${iter}`,
-              );
-            } else if (act.type === 'comment') {
-              const c = act.data;
-              const author = c.agentId ? `🤖 ${c.agentId}` : '👤 user';
-              console.log(`  💭 ${pc.dim(ago)} ${pc.cyan(author)} ${c.content}`);
-            } else {
-              const b = act.data;
-              const icon = briefIcon(b.type);
-              const pri =
-                b.priority === 'urgent'
-                  ? pc.red(' [urgent]')
-                  : b.priority === 'normal'
-                    ? pc.yellow(' [normal]')
-                    : '';
-              let statusTag: string;
-              if (b.resolvedAt) {
-                const actions = (b.actions as any[]) || [];
-                const matched = actions.find((a: any) => a.key === b.resolvedAction);
-                statusTag = pc.green(` ${matched?.label || '✓'}`);
-              } else if (b.readAt) {
-                statusTag = pc.dim(' (read)');
-              } else {
-                statusTag = pc.yellow(' ●');
-              }
-              const typeLabel = pc.dim(`[${b.type}]`);
-              console.log(
-                `  ${icon} ${pc.dim(ago)} Brief ${typeLabel} ${b.title}${pri}${statusTag}  ${pc.dim(b.id)}`,
-              );
-            }
+            console.log(act.text);
           }
         }
       }

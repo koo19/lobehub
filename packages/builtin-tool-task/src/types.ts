@@ -11,6 +11,9 @@ export const TaskApiName = {
   /** List tasks with optional filters */
   listTasks: 'listTasks',
 
+  /** Update a task's status (e.g. complete, cancel) */
+  updateTaskStatus: 'updateTaskStatus',
+
   /** View details of a specific task */
   viewTask: 'viewTask',
 } as const;

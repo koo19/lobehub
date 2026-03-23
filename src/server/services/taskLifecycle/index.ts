@@ -87,7 +87,19 @@ export class TaskLifecycleService {
         if (shouldSkipPause) return; // auto-retry in progress, don't pause
       }
 
-      // 4. Checkpoint — pause for user review
+      // 4. Check if agent delivered a result brief → auto-complete
+      //    If the latest brief is type 'result' and no review is configured, complete the task
+      const reviewConfig = currentTask ? this.taskModel.getReviewConfig(currentTask) : null;
+      if (!reviewConfig?.enabled) {
+        const briefs = await this.briefModel.findByTaskId(taskId);
+        const latestBrief = briefs[0]; // sorted by createdAt desc
+        if (latestBrief?.type === 'result') {
+          await this.taskModel.updateStatus(taskId, 'completed', { error: null });
+          return;
+        }
+      }
+
+      // 5. Checkpoint — pause for user review
       if (currentTask && this.taskModel.shouldPauseOnTopicComplete(currentTask)) {
         await this.taskModel.updateStatus(taskId, 'paused', { error: null });
       }

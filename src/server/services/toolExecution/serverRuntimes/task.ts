@@ -10,10 +10,19 @@ import {
 } from '@lobechat/prompts';
 
 import { TaskModel } from '@/database/models/task';
+import { TaskService } from '@/server/services/task';
 
 import { type ServerRuntimeRegistration } from './types';
 
-const createTaskRuntime = (taskModel: TaskModel, taskId?: string) => ({
+const createTaskRuntime = ({
+  taskId,
+  taskModel,
+  taskService,
+}: {
+  taskId?: string;
+  taskModel: TaskModel;
+  taskService: TaskService;
+}) => ({
   createTask: async (args: {
     instruction: string;
     name: string;
@@ -177,36 +186,41 @@ const createTaskRuntime = (taskModel: TaskModel, taskId?: string) => ({
     };
   },
 
-  viewTask: async (args: { identifier?: string }) => {
-    let task;
-
-    if (args.identifier) {
-      task = await taskModel.resolve(args.identifier);
-    } else if (taskId) {
-      task = await taskModel.findById(taskId);
-    } else {
+  updateTaskStatus: async (args: { identifier?: string; status: string }) => {
+    const id = args.identifier || taskId;
+    if (!id) {
       return {
         content: 'No task identifier provided and no current task context.',
         success: false,
       };
     }
 
-    if (!task) return { content: `Task not found: ${args.identifier || taskId}`, success: false };
+    const task = await taskModel.resolve(id);
+    if (!task) return { content: `Task not found: ${id}`, success: false };
 
-    const subtasks = await taskModel.findSubtasks(task.id);
-    const deps = await taskModel.getDependencies(task.id);
+    const updated = await taskModel.updateStatus(task.id, args.status);
+    if (!updated) return { content: `Failed to update task ${task.identifier}`, success: false };
 
     return {
-      content: formatTaskDetail({
-        dependencies: deps.map((d) => ({ dependsOn: d.dependsOnId, type: d.type })),
-        identifier: task.identifier,
-        instruction: task.instruction,
-        name: task.name,
-        parentTaskId: task.parentTaskId,
-        priority: task.priority,
-        status: task.status,
-        subtasks,
-      }),
+      content: `Task ${task.identifier} status updated to ${args.status}.`,
+      success: true,
+    };
+  },
+
+  viewTask: async (args: { identifier?: string }) => {
+    const id = args.identifier || taskId;
+    if (!id) {
+      return {
+        content: 'No task identifier provided and no current task context.',
+        success: false,
+      };
+    }
+
+    const detail = await taskService.getTaskDetail(id);
+    if (!detail) return { content: `Task not found: ${id}`, success: false };
+
+    return {
+      content: formatTaskDetail(detail),
       success: true,
     };
   },
@@ -219,8 +233,9 @@ export const taskRuntime: ServerRuntimeRegistration = {
     }
 
     const taskModel = new TaskModel(context.serverDB, context.userId);
+    const taskService = new TaskService(context.serverDB, context.userId);
 
-    return createTaskRuntime(taskModel, context.taskId);
+    return createTaskRuntime({ taskId: context.taskId, taskModel, taskService });
   },
   identifier: TaskIdentifier,
 };

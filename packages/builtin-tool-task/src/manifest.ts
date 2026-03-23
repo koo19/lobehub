@@ -163,6 +163,27 @@ export const TaskManifest: BuiltinToolManifest = {
       },
     },
     {
+      description:
+        "Update a task's status. Use to mark tasks as completed, canceled, or change lifecycle state. Defaults to the current task if no identifier provided.",
+      name: TaskApiName.updateTaskStatus,
+      parameters: {
+        properties: {
+          identifier: {
+            description:
+              'The task identifier (e.g. "TASK-1"). Defaults to the current task if omitted.',
+            type: 'string',
+          },
+          status: {
+            description: 'New status for the task.',
+            enum: ['backlog', 'running', 'paused', 'completed', 'failed', 'canceled'],
+            type: 'string',
+          },
+        },
+        required: ['status'],
+        type: 'object',
+      },
+    },
+    {
       description: 'Delete a task by identifier.',
       name: TaskApiName.deleteTask,
       parameters: {

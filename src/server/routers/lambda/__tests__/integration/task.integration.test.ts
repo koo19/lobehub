@@ -81,8 +81,7 @@ describe('Task Router Integration', () => {
       const detail = await caller.detail({ id: 'TASK-1' });
       expect(detail.data.identifier).toBe('TASK-1');
       expect(detail.data.subtasks).toHaveLength(0);
-      expect(detail.data.topics).toHaveLength(0);
-      expect(detail.data.comments).toHaveLength(0);
+      expect(detail.data.timeline).toBeUndefined();
     });
   });
 
@@ -112,7 +111,9 @@ describe('Task Router Integration', () => {
 
       const detail = await caller.detail({ id: parent.data.identifier });
       expect(detail.data.subtasks).toHaveLength(2);
-      expect(detail.data.subtaskDeps).toHaveLength(1);
+      // ch2 should have blockedBy pointing to ch1's identifier
+      const ch2Sub = detail.data.subtasks!.find((s) => s.name === 'Chapter 2');
+      expect(ch2Sub?.blockedBy).toBeTruthy();
     });
   });
 
@@ -157,8 +158,8 @@ describe('Task Router Integration', () => {
       });
 
       const detail = await caller.detail({ id: task.data.identifier });
-      expect(detail.data.comments).toHaveLength(2);
-      expect(detail.data.comments[0].content).toBe('First comment');
+      expect(detail.data.timeline?.comments).toHaveLength(2);
+      expect(detail.data.timeline?.comments?.[0].content).toBe('First comment');
     });
   });
 
@@ -193,9 +194,9 @@ describe('Task Router Integration', () => {
       });
 
       const review = await caller.getReview({ id: task.data.id });
-      expect(review.data.enabled).toBe(true);
-      expect(review.data.rubrics).toHaveLength(2);
-      expect(review.data.rubrics[0].type).toBe('llm-rubric');
+      expect(review.data!.enabled).toBe(true);
+      expect(review.data!.rubrics).toHaveLength(2);
+      expect(review.data!.rubrics[0].type).toBe('llm-rubric');
     });
   });
 
@@ -319,9 +320,13 @@ describe('Task Router Integration', () => {
 
       // Check detail workspace
       const detail = await caller.detail({ id: task.data.identifier });
-      const workspace = detail.data.documents;
-      expect(Object.keys(workspace.nodeMap)).toHaveLength(1);
-      expect(workspace.nodeMap[doc.id].title).toBe('Test Doc');
+      expect(detail.data.workspace).toBeDefined();
+      // Document should appear somewhere in the workspace tree
+      const allDocs = detail.data.workspace!.flatMap((f) => [
+        { documentId: f.documentId, title: f.title },
+        ...f.children,
+      ]);
+      expect(allDocs.find((d) => d.documentId === doc.id)?.title).toBe('Test Doc');
 
       // Unpin
       await caller.unpinDocument({
@@ -330,7 +335,7 @@ describe('Task Router Integration', () => {
       });
 
       const detail2 = await caller.detail({ id: task.data.identifier });
-      expect(Object.keys(detail2.data.documents.nodeMap)).toHaveLength(0);
+      expect(detail2.data.workspace).toBeUndefined();
     });
   });
 
@@ -352,10 +357,12 @@ describe('Task Router Integration', () => {
       // Wait for timeout
       await new Promise((r) => setTimeout(r, 1500));
 
-      // detail should auto-detect timeout
+      // detail should auto-detect timeout and pause
       const detail = await caller.detail({ id: task.data.identifier });
       expect(detail.data.status).toBe('paused');
-      expect(detail.data.error).toBeNull(); // stale timeout error gets cleared
+      // Verify stale timeout error gets cleared via find
+      const found = await caller.find({ id: task.data.id });
+      expect(found.data.error).toBeNull();
     });
   });
 });

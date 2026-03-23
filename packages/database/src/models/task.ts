@@ -81,6 +81,14 @@ export class TaskModel {
     return result[0] || null;
   }
 
+  async findByIds(ids: string[]): Promise<TaskItem[]> {
+    if (ids.length === 0) return [];
+    return this.db
+      .select()
+      .from(tasks)
+      .where(and(inArray(tasks.id, ids), eq(tasks.createdByUserId, this.userId)));
+  }
+
   // Resolve id or identifier (e.g. 'TASK-1') to a task
   async resolve(idOrIdentifier: string): Promise<TaskItem | null> {
     if (idOrIdentifier.startsWith('task_')) return this.findById(idOrIdentifier);

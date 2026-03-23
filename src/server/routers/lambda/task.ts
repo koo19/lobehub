@@ -2,6 +2,7 @@ import { BriefIdentifier } from '@lobechat/builtin-tool-brief';
 import { NotebookIdentifier } from '@lobechat/builtin-tool-notebook';
 import { TaskIdentifier } from '@lobechat/builtin-tool-task';
 import { buildTaskRunPrompt } from '@lobechat/prompts';
+import type { WorkspaceData } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
@@ -12,6 +13,7 @@ import { TopicModel } from '@/database/models/topic';
 import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { AiAgentService } from '@/server/services/aiAgent';
+import { TaskService } from '@/server/services/task';
 import { TaskLifecycleService } from '@/server/services/taskLifecycle';
 import { TaskReviewService } from '@/server/services/taskReview';
 
@@ -22,6 +24,7 @@ const taskProcedure = authedProcedure.use(serverDatabase).use(async (opts) => {
       briefModel: new BriefModel(ctx.serverDB, ctx.userId),
       taskLifecycle: new TaskLifecycleService(ctx.serverDB, ctx.userId),
       taskModel: new TaskModel(ctx.serverDB, ctx.userId),
+      taskService: new TaskService(ctx.serverDB, ctx.userId),
       taskTopicModel: new TaskTopicModel(ctx.serverDB, ctx.userId),
       topicModel: new TopicModel(ctx.serverDB, ctx.userId),
     },
@@ -85,7 +88,9 @@ async function buildTaskPrompt(
     taskModel.getComments(task.id).catch(() => []),
     taskModel.findSubtasks(task.id).catch(() => []),
     taskModel.getDependencies(task.id).catch(() => []),
-    taskModel.getTreePinnedDocuments(task.id).catch(() => []),
+    taskModel
+      .getTreePinnedDocuments(task.id)
+      .catch((): WorkspaceData => ({ nodeMap: {}, tree: [] })),
   ]);
 
   // Batch-fetch dependencies for all subtasks to show blockedBy info
@@ -101,6 +106,11 @@ async function buildTaskPrompt(
     const depIdentifier = subtaskIdToIdentifier.get(dep.dependsOnId);
     if (depIdentifier) subtaskDepMap.set(dep.taskId, depIdentifier);
   }
+
+  // Resolve dependency task identifiers
+  const depTaskIds = [...new Set(dependencies.map((d: any) => d.dependsOnId))];
+  const depTasks = await taskModel.findByIds(depTaskIds);
+  const depIdToIdentifier = new Map(depTasks.map((t: any) => [t.id, t.identifier]));
 
   // Resolve parent task context (identifier + sibling subtasks)
   let parentIdentifier: string | null = null;
@@ -198,7 +208,10 @@ async function buildTaskPrompt(
     parentTask: parentTaskContext,
     task: {
       assigneeAgentId: task.assigneeAgentId,
-      dependencies: dependencies.map((d: any) => ({ dependsOn: d.dependsOnId, type: d.type })),
+      dependencies: dependencies.map((d: any) => ({
+        dependsOn: depIdToIdentifier.get(d.dependsOnId) ?? d.dependsOnId,
+        type: d.type,
+      })),
       description: task.description,
       id: task.id,
       identifier: task.identifier,
@@ -486,10 +499,8 @@ export const taskRouter = router({
       if (task.status === 'running' && task.heartbeatTimeout && task.lastHeartbeatAt) {
         const elapsed = (Date.now() - new Date(task.lastHeartbeatAt).getTime()) / 1000;
         if (elapsed > task.heartbeatTimeout) {
-          // Mark task as paused and running topics as timeout
           await model.updateStatus(task.id, 'paused', { error: 'Heartbeat timeout' });
           await ctx.taskTopicModel.timeoutRunning(task.id);
-          // Re-fetch updated task
           task = await resolveOrThrow(model, input.id);
         }
       }
@@ -497,49 +508,14 @@ export const taskRouter = router({
       // Clear stale heartbeat timeout error if task is no longer running
       if (task.status !== 'running' && task.error === 'Heartbeat timeout') {
         await model.update(task.id, { error: null });
-        task = { ...task, error: null };
       }
 
-      // Parallel fetch all related data
-      const briefModel = ctx.briefModel;
-      const [subtasks, dependencies, topics, briefs, comments, documents] = await Promise.all([
-        model.findSubtasks(task.id),
-        model.getDependencies(task.id),
-        ctx.taskTopicModel.findWithDetails(task.id),
-        briefModel.findByTaskId(task.id),
-        model.getComments(task.id),
-        model.getTreePinnedDocuments(task.id),
-      ]);
-
-      // Fetch dependencies between subtasks
-      const subtaskIds = subtasks.map((s) => s.id);
-      const subtaskDeps = await model.getDependenciesByTaskIds(subtaskIds);
-
-      // Resolve parent info
-      let parent: { identifier: string; name: string | null } | null = null;
-      if (task.parentTaskId) {
-        const parentTask = await model.findById(task.parentTaskId);
-        if (parentTask) {
-          parent = { identifier: parentTask.identifier, name: parentTask.name };
-        }
+      const detail = await ctx.taskService.getTaskDetail(task.identifier);
+      if (!detail) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
       }
 
-      return {
-        data: {
-          ...task,
-          parent,
-          briefs,
-          checkpoint: model.getCheckpointConfig(task),
-          comments,
-          dependencies,
-          documents,
-          review: model.getReviewConfig(task),
-          subtaskDeps,
-          subtasks,
-          topics,
-        },
-        success: true,
-      };
+      return { data: detail, success: true };
     } catch (error) {
       if (error instanceof TRPCError) throw error;
       console.error('[task:detail]', error);

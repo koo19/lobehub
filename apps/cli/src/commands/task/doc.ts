@@ -71,16 +71,13 @@ export function registerDocCommands(task: Command) {
       if (!folder.startsWith('docs_')) {
         // folder is a name, find or create it
         const detail = await client.task.detail.query({ id });
-        const workspace = detail.data.documents as any;
-        const nodeMap = workspace?.nodeMap || {};
+        const folders = detail.data.workspace || [];
 
         // Search for existing folder by name
-        const existing = Object.entries(nodeMap).find(
-          ([, doc]: [string, any]) => doc.title === folder && doc.fileType === 'custom/folder',
-        );
+        const existingFolder = folders.find((f) => f.title === folder);
 
-        if (existing) {
-          folderId = existing[0];
+        if (existingFolder) {
+          folderId = existingFolder.documentId;
         } else {
           // Create folder and pin to task
           const result = await client.document.createDocument.mutate({

@@ -343,7 +343,16 @@ export const createRuntimeExecutors = (
 
       // Construct ChatStreamPayload
       const stream = ctx.stream ?? true;
-      const chatPayload = { messages: processedMessages, model, stream, tools };
+
+      // Resolve max_tokens from model bank to avoid truncation of long tool call arguments
+      const { LOBE_DEFAULT_MODEL_LIST: modelList } = await import('model-bank');
+      const modelInfo =
+        modelList.find(
+          (m: { id: string; providerId?: string }) => m.id === model && m.providerId === provider,
+        ) || modelList.find((m: { id: string }) => m.id === model);
+      const max_tokens = modelInfo?.maxOutput;
+
+      const chatPayload = { max_tokens, messages: processedMessages, model, stream, tools };
 
       log(
         `${stagePrefix} calling model-runtime chat (model: %s, messages: %d, tools: %d)`,
