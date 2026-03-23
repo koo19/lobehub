@@ -109,6 +109,17 @@ export interface PlatformClient {
   /** Parse a composite message ID into the platform-native format. */
   parseMessageId: (compositeId: string) => string | number;
 
+  /**
+   * Resolve the correct thread ID for reaction API calls.
+   *
+   * Some platforms (e.g. Discord) need to route reactions to a different channel
+   * than the thread itself — for instance, a thread-starter message lives in
+   * the parent channel, not in the thread.
+   *
+   * When not implemented, `threadId` is used as-is.
+   */
+  resolveReactionThreadId?: (threadId: string, messageId: string) => string;
+
   /** Strip platform-specific bot mention artifacts from user input. */
   sanitizeUserInput?: (text: string) => string;
 
@@ -213,6 +224,13 @@ export abstract class ClientFactory {
  * Contains metadata, factory, and validation. All runtime operations go through PlatformClient.
  */
 export interface PlatformDefinition {
+  /**
+   * Authentication flow for obtaining credentials.
+   * - 'qrcode': QR code scan flow (e.g. WeChat iLink)
+   * When set, the frontend renders a QR code auth UI instead of manual credential inputs.
+   */
+  authFlow?: 'qrcode';
+
   /** Factory for creating PlatformClient instances and validating credentials/settings. */
   clientFactory: ClientFactory;
 
