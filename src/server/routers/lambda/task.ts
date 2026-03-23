@@ -77,14 +77,79 @@ async function buildTaskPrompt(
 ): Promise<string> {
   const { briefModel, taskModel, taskTopicModel } = ctx;
 
-  const [topics, briefs, comments, subtasks] = await Promise.all([
+  const [topics, briefs, comments, subtasks, dependencies, documents] = await Promise.all([
     task.totalTopics && task.totalTopics > 0
       ? taskTopicModel.findWithHandoff(task.id).catch(() => [])
       : Promise.resolve([]),
     briefModel.findByTaskId(task.id).catch(() => []),
     taskModel.getComments(task.id).catch(() => []),
     taskModel.findSubtasks(task.id).catch(() => []),
+    taskModel.getDependencies(task.id).catch(() => []),
+    taskModel.getTreePinnedDocuments(task.id).catch(() => []),
   ]);
+
+  // Batch-fetch dependencies for all subtasks to show blockedBy info
+  const subtaskIds = subtasks.map((s: any) => s.id);
+  const subtaskDeps =
+    subtaskIds.length > 0
+      ? await taskModel.getDependenciesByTaskIds(subtaskIds).catch(() => [])
+      : [];
+  // Build a map: subtaskId -> dependsOn identifier
+  const subtaskIdToIdentifier = new Map(subtasks.map((s: any) => [s.id, s.identifier]));
+  const subtaskDepMap = new Map<string, string>();
+  for (const dep of subtaskDeps as any[]) {
+    const depIdentifier = subtaskIdToIdentifier.get(dep.dependsOnId);
+    if (depIdentifier) subtaskDepMap.set(dep.taskId, depIdentifier);
+  }
+
+  // Resolve parent task context (identifier + sibling subtasks)
+  let parentIdentifier: string | null = null;
+  let parentTaskContext:
+    | {
+        identifier: string;
+        instruction: string;
+        name?: string | null;
+        subtasks?: Array<{
+          blockedBy?: string;
+          identifier: string;
+          name?: string | null;
+          priority?: number | null;
+          status: string;
+        }>;
+      }
+    | undefined;
+
+  if (task.parentTaskId) {
+    const parent = await taskModel.findById(task.parentTaskId);
+    parentIdentifier = parent?.identifier || null;
+    if (parent) {
+      const siblings = await taskModel.findSubtasks(task.parentTaskId).catch(() => []);
+      const siblingIds = siblings.map((s: any) => s.id);
+      const siblingDeps =
+        siblingIds.length > 0
+          ? await taskModel.getDependenciesByTaskIds(siblingIds).catch(() => [])
+          : [];
+      const siblingIdToIdentifier = new Map(siblings.map((s: any) => [s.id, s.identifier]));
+      const siblingDepMap = new Map<string, string>();
+      for (const dep of siblingDeps as any[]) {
+        const depId = siblingIdToIdentifier.get(dep.dependsOnId);
+        if (depId) siblingDepMap.set(dep.taskId, depId);
+      }
+
+      parentTaskContext = {
+        identifier: parent.identifier,
+        instruction: parent.instruction,
+        name: parent.name,
+        subtasks: siblings.map((s: any) => ({
+          blockedBy: siblingDepMap.get(s.id),
+          identifier: s.identifier,
+          name: s.name,
+          priority: s.priority,
+          status: s.status,
+        })),
+      };
+    }
+  }
 
   return buildTaskRunPrompt({
     activities: {
@@ -130,12 +195,45 @@ async function buildTaskPrompt(
       })),
     },
     extraPrompt,
+    parentTask: parentTaskContext,
     task: {
+      assigneeAgentId: task.assigneeAgentId,
+      dependencies: dependencies.map((d: any) => ({ dependsOn: d.dependsOnId, type: d.type })),
       description: task.description,
+      id: task.id,
       identifier: task.identifier,
       instruction: task.instruction,
       name: task.name,
+      parentIdentifier,
+      priority: task.priority,
+      review: taskModel.getReviewConfig(task) as any,
+      status: task.status,
+      subtasks: subtasks.map((s: any) => ({
+        blockedBy: subtaskDepMap.get(s.id),
+        identifier: s.identifier,
+        name: s.name,
+        priority: s.priority,
+        status: s.status,
+      })),
     },
+    workspace: documents.tree.map((rootNode) => {
+      const rootDoc = documents.nodeMap[rootNode.id];
+      return {
+        children: rootNode.children.map((child) => {
+          const childDoc = documents.nodeMap[child.id];
+          return {
+            createdAt: childDoc?.createdAt,
+            documentId: child.id,
+            size: childDoc?.charCount ?? undefined,
+            sourceTaskIdentifier: childDoc?.sourceTaskIdentifier ?? undefined,
+            title: childDoc?.title,
+          };
+        }),
+        createdAt: rootDoc?.createdAt,
+        documentId: rootNode.id,
+        title: rootDoc?.title,
+      };
+    }),
   });
 }
 
@@ -259,17 +357,12 @@ export const taskRouter = router({
     }),
 
   cancelTopic: taskProcedure
-    .input(z.object({ id: z.string(), topicId: z.string() }))
+    .input(z.object({ topicId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       try {
-        const model = ctx.taskModel;
-        const task = await resolveOrThrow(model, input.id);
-
-        // Find the topic and its operationId
-        const topics = await ctx.taskTopicModel.findByTaskId(task.id);
-        const target = topics.find((t) => t.topicId === input.topicId);
+        const target = await ctx.taskTopicModel.findByTopicId(input.topicId);
         if (!target) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Topic not found for this task.' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Topic not found.' });
         }
 
         if (target.status !== 'running') {
@@ -279,17 +372,13 @@ export const taskRouter = router({
           });
         }
 
-        // Interrupt the agent operation if operationId exists
         if (target.operationId) {
           const aiAgentService = new AiAgentService(ctx.serverDB, ctx.userId);
           await aiAgentService.interruptTask({ operationId: target.operationId });
         }
 
-        // Mark topic as canceled
-        await ctx.taskTopicModel.updateStatus(task.id, input.topicId, 'canceled');
-
-        // Pause the task
-        await model.updateStatus(task.id, 'paused');
+        await ctx.taskTopicModel.updateStatus(target.taskId, input.topicId, 'canceled');
+        await ctx.taskModel.updateStatus(target.taskId, 'paused');
 
         return { message: 'Topic canceled', success: true };
       } catch (error) {
@@ -304,29 +393,20 @@ export const taskRouter = router({
     }),
 
   deleteTopic: taskProcedure
-    .input(z.object({ id: z.string(), topicId: z.string() }))
+    .input(z.object({ topicId: z.string() }))
     .mutation(async ({ input, ctx }) => {
       try {
-        const model = ctx.taskModel;
-        const task = await resolveOrThrow(model, input.id);
-
-        // Check topic exists
-        const topics = await ctx.taskTopicModel.findByTaskId(task.id);
-        const target = topics.find((t) => t.topicId === input.topicId);
+        const target = await ctx.taskTopicModel.findByTopicId(input.topicId);
         if (!target) {
-          throw new TRPCError({ code: 'NOT_FOUND', message: 'Topic not found for this task.' });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Topic not found.' });
         }
 
-        // If running, cancel first
         if (target.status === 'running' && target.operationId) {
           const aiAgentService = new AiAgentService(ctx.serverDB, ctx.userId);
           await aiAgentService.interruptTask({ operationId: target.operationId });
         }
 
-        // Remove association from task_topics
-        await ctx.taskTopicModel.remove(task.id, input.topicId);
-
-        // Delete the topic itself (messages etc.)
+        await ctx.taskTopicModel.remove(target.taskId, input.topicId);
         await ctx.topicModel.delete(input.topicId);
 
         return { message: 'Topic deleted', success: true };
@@ -422,25 +502,37 @@ export const taskRouter = router({
 
       // Parallel fetch all related data
       const briefModel = ctx.briefModel;
-      const [subtasks, dependencies, topics, briefs, comments] = await Promise.all([
+      const [subtasks, dependencies, topics, briefs, comments, documents] = await Promise.all([
         model.findSubtasks(task.id),
         model.getDependencies(task.id),
         ctx.taskTopicModel.findWithDetails(task.id),
         briefModel.findByTaskId(task.id),
         model.getComments(task.id),
+        model.getTreePinnedDocuments(task.id),
       ]);
 
       // Fetch dependencies between subtasks
       const subtaskIds = subtasks.map((s) => s.id);
       const subtaskDeps = await model.getDependenciesByTaskIds(subtaskIds);
 
+      // Resolve parent info
+      let parent: { identifier: string; name: string | null } | null = null;
+      if (task.parentTaskId) {
+        const parentTask = await model.findById(task.parentTaskId);
+        if (parentTask) {
+          parent = { identifier: parentTask.identifier, name: parentTask.name };
+        }
+      }
+
       return {
         data: {
           ...task,
+          parent,
           briefs,
           checkpoint: model.getCheckpointConfig(task),
           comments,
           dependencies,
+          documents,
           review: model.getReviewConfig(task),
           subtaskDeps,
           subtasks,
@@ -781,6 +873,19 @@ export const taskRouter = router({
           taskIdentifier: task.identifier,
         };
       } catch (error) {
+        // Rollback task status to paused on failure
+        try {
+          const model = ctx.taskModel;
+          const failedTask = await model.resolve(id);
+          if (failedTask && failedTask.status === 'running') {
+            await model.updateStatus(failedTask.id, 'paused', {
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+        } catch {
+          // Rollback itself failed, ignore
+        }
+
         if (error instanceof TRPCError) throw error;
         console.error('[task:run]', error);
         throw new TRPCError({

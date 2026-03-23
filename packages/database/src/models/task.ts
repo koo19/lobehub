@@ -1,4 +1,9 @@
-import type { CheckpointConfig } from '@lobechat/types';
+import type {
+  CheckpointConfig,
+  WorkspaceData,
+  WorkspaceDocNode,
+  WorkspaceTreeNode,
+} from '@lobechat/types';
 import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 
 import type { NewTask, NewTaskComment, TaskCommentItem, TaskItem } from '../schemas/task';
@@ -402,22 +407,65 @@ export class TaskModel {
       .orderBy(taskDocuments.createdAt);
   }
 
-  // Get all pinned docs from a task tree (recursive)
-  async getTreePinnedDocuments(rootTaskId: string) {
+  // Get all pinned docs from a task tree (recursive), returns nodeMap + tree structure
+  async getTreePinnedDocuments(rootTaskId: string): Promise<WorkspaceData> {
     const result = await this.db.execute(sql`
       WITH RECURSIVE task_tree AS (
-        SELECT id FROM tasks WHERE id = ${rootTaskId}
+        SELECT id, identifier FROM tasks WHERE id = ${rootTaskId}
         UNION ALL
-        SELECT t.id FROM tasks t
+        SELECT t.id, t.identifier FROM tasks t
         JOIN task_tree tt ON t.parent_task_id = tt.id
       )
-      SELECT td.*, tt.id as source_task_id
+      SELECT td.*, tt.id as source_task_id, tt.identifier as source_task_identifier,
+             d.title as document_title, d.file_type as document_file_type, d.parent_id as document_parent_id,
+             d.total_char_count as document_char_count, d.updated_at as document_updated_at
       FROM task_documents td
       JOIN task_tree tt ON td.task_id = tt.id
+      LEFT JOIN documents d ON td.document_id = d.id
       ORDER BY td.created_at
     `);
 
-    return result.rows;
+    // Build nodeMap
+    const nodeMap: Record<string, WorkspaceDocNode> = {};
+
+    const docIds = new Set<string>();
+
+    for (const row of result.rows as any[]) {
+      const docId = row.document_id;
+      docIds.add(docId);
+      nodeMap[docId] = {
+        charCount: row.document_char_count,
+        createdAt: row.created_at,
+        fileType: row.document_file_type,
+        parentId: row.document_parent_id,
+        pinnedBy: row.pinned_by,
+        sourceTaskIdentifier: row.source_task_id !== rootTaskId ? row.source_task_identifier : null,
+        title: row.document_title || 'Untitled',
+        updatedAt: row.document_updated_at,
+      };
+    }
+
+    // Build tree (children as id references)
+    type TreeNode = WorkspaceTreeNode;
+
+    const childrenMap = new Map<string | null, TreeNode[]>();
+    for (const docId of docIds) {
+      const node = nodeMap[docId];
+      const parentId = node.parentId && docIds.has(node.parentId) ? node.parentId : null;
+      const list = childrenMap.get(parentId) || [];
+      list.push({ children: [], id: docId });
+      childrenMap.set(parentId, list);
+    }
+
+    const buildTree = (parentId: string | null): TreeNode[] => {
+      const nodes = childrenMap.get(parentId) || [];
+      for (const node of nodes) {
+        node.children = buildTree(node.id);
+      }
+      return nodes;
+    };
+
+    return { nodeMap, tree: buildTree(null) };
   }
 
   // ========== Topic Management ==========

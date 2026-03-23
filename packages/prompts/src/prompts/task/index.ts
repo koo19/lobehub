@@ -207,6 +207,22 @@ export interface TaskRunPromptSubtask {
   status: string;
 }
 
+export interface TaskRunPromptDocument {
+  createdAt?: string;
+  documentId: string;
+  /** Character count of the document content */
+  size?: number;
+  sourceTaskIdentifier?: string;
+  title?: string;
+}
+
+export interface TaskRunPromptFolder {
+  children: TaskRunPromptDocument[];
+  createdAt?: string;
+  documentId: string;
+  title?: string;
+}
+
 export interface TaskRunPromptInput {
   /** Activity data (all optional) */
   activities?: {
@@ -217,13 +233,34 @@ export interface TaskRunPromptInput {
   };
   /** --prompt flag content */
   extraPrompt?: string;
-  /** Task data */
-  task: {
-    description?: string | null;
+  /** Parent task context (when current task is a subtask) */
+  parentTask?: {
     identifier: string;
     instruction: string;
     name?: string | null;
+    subtasks?: Array<TaskSummary & { blockedBy?: string }>;
   };
+  /** Task data */
+  task: {
+    assigneeAgentId?: string | null;
+    dependencies?: Array<{ dependsOn: string; type: string }>;
+    description?: string | null;
+    id: string;
+    identifier: string;
+    instruction: string;
+    name?: string | null;
+    parentIdentifier?: string | null;
+    priority?: number | null;
+    review?: {
+      enabled?: boolean;
+      maxIterations?: number;
+      rubrics?: Array<{ name: string; threshold?: number; type: string }>;
+    } | null;
+    status: string;
+    subtasks?: Array<TaskSummary & { blockedBy?: string }>;
+  };
+  /** Pinned documents (workspace) */
+  workspace?: TaskRunPromptFolder[];
 }
 
 // ── Relative time helper ──
@@ -273,7 +310,7 @@ const briefIcon = (type: string): string => {
  * 4. Original Task (instruction + description) — the base requirement
  */
 export const buildTaskRunPrompt = (input: TaskRunPromptInput, now?: Date): string => {
-  const { task, activities, extraPrompt } = input;
+  const { task, activities, extraPrompt, workspace, parentTask } = input;
   const sections: string[] = [];
 
   // ── 1. High Priority Instruction ──
@@ -293,51 +330,82 @@ export const buildTaskRunPrompt = (input: TaskRunPromptInput, now?: Date): strin
     sections.push(`<user_feedback>\n${lines.join('\n')}\n</user_feedback>`);
   }
 
-  // ── 3. Activities (topics + briefs + comments + subtasks, chronological) ──
+  // ── 3. Task context (full detail so agent doesn't need to call viewTask) ──
+  const taskLines = [
+    `<task>`,
+    `<hint>This tag contains the complete task context. Do NOT call viewTask to re-fetch it.</hint>`,
+    `${task.identifier} ${task.name || task.identifier}`,
+    `Status: ${statusIcon(task.status)} ${task.status}     Priority: ${priorityLabel(task.priority)}`,
+    `Instruction: ${task.instruction}`,
+  ];
+  if (task.description) taskLines.push(`Description: ${task.description}`);
+  if (task.assigneeAgentId) taskLines.push(`Agent: ${task.assigneeAgentId}`);
+  if (task.parentIdentifier) taskLines.push(`Parent: ${task.parentIdentifier}`);
+
+  const topicCount = activities?.topics?.length ?? 0;
+  if (topicCount > 0) taskLines.push(`Topics: ${topicCount}`);
+
+  if (task.dependencies && task.dependencies.length > 0) {
+    taskLines.push(
+      `Dependencies: ${task.dependencies.map((d) => `${d.type}: ${d.dependsOn}`).join(', ')}`,
+    );
+  }
+
+  // Subtasks
+  if (task.subtasks && task.subtasks.length > 0) {
+    taskLines.push('');
+    taskLines.push('Subtasks:');
+    for (const s of task.subtasks) {
+      const dep = s.blockedBy ? ` ← blocks: ${s.blockedBy}` : '';
+      taskLines.push(
+        `  ${s.identifier} ${statusIcon(s.status)} ${s.status} ${s.name || '(unnamed)'}${dep}`,
+      );
+    }
+  }
+
+  // Review
+  taskLines.push('');
+  if (task.review?.enabled && task.review.rubrics && task.review.rubrics.length > 0) {
+    taskLines.push(`Review (maxIterations: ${task.review.maxIterations || 3}):`);
+    for (const r of task.review.rubrics) {
+      taskLines.push(
+        `  - ${r.name} [${r.type}]${r.threshold ? ` ≥ ${Math.round(r.threshold * 100)}%` : ''}`,
+      );
+    }
+  } else {
+    taskLines.push('Review: (not configured)');
+  }
+
+  // Workspace
+  if (workspace && workspace.length > 0) {
+    const totalDocs = workspace.reduce((sum, f) => sum + f.children.length, 0);
+    taskLines.push('');
+    taskLines.push(`Workspace (${totalDocs + workspace.length}):`);
+    for (const folder of workspace) {
+      const folderAgo = folder.createdAt ? `  ${timeAgo(folder.createdAt, now)}` : '';
+      taskLines.push(`  📁 ${folder.title || 'Untitled'} (${folder.documentId})${folderAgo}`);
+      for (const d of folder.children) {
+        const source = d.sourceTaskIdentifier ? ` ← ${d.sourceTaskIdentifier}` : '';
+        const sizeStr = d.size ? `  ${d.size} chars` : '';
+        const docAgo = d.createdAt ? `  ${timeAgo(d.createdAt, now)}` : '';
+        taskLines.push(
+          `  └── 📄 ${d.title || 'Untitled'} (${d.documentId})${source}${sizeStr}${docAgo}`,
+        );
+      }
+    }
+  }
+
+  // Activities (chronological, flat list)
   const timelineEntries: { text: string; time: number }[] = [];
-
-  if (activities?.comments) {
-    for (const c of activities.comments) {
-      const author = c.agentId ? 'agent' : 'user';
-      const ago = c.createdAt ? timeAgo(c.createdAt, now) : '';
-      const timeAttr = ago ? ` time="${ago}"` : '';
-      const idAttr = c.id ? ` id="${c.id}"` : '';
-      const truncated = c.content.length > 50 ? c.content.slice(0, 50) + '...' : c.content;
-      timelineEntries.push({
-        text: `<comment${idAttr} role="${author}"${timeAttr}>${truncated}</comment>`,
-        time: c.createdAt ? new Date(c.createdAt).getTime() : 0,
-      });
-    }
-  }
-
-  if (activities?.subtasks) {
-    for (const s of activities.subtasks) {
-      const idAttr = s.id ? ` id="${s.id}"` : '';
-      timelineEntries.push({
-        text: `<subtask${idAttr} identifier="${s.identifier}" status="${s.status}">${s.name || s.identifier}</subtask>`,
-        time: s.createdAt ? new Date(s.createdAt).getTime() : 0,
-      });
-    }
-  }
 
   if (activities?.topics) {
     for (const t of activities.topics) {
       const ago = timeAgo(t.createdAt, now);
       const status = t.status || 'completed';
-      const idAttr = t.id ? ` id="${t.id}"` : '';
-      const h = t.handoff;
-      const lines = [
-        `<topic${idAttr} seq="${t.seq || '?'}" status="${status}" time="${ago}">`,
-        `  ${t.title || h?.title || 'Untitled'}`,
-      ];
-      if (h?.summary) lines.push(`  ${h.summary}`);
-      if (h?.nextAction) lines.push(`  Next: ${h.nextAction}`);
-      if (h?.keyFindings && h.keyFindings.length > 0) {
-        lines.push(`  Key findings: ${h.keyFindings.join('; ')}`);
-      }
-      lines.push('</topic>');
+      const title = t.title || t.handoff?.title || 'Untitled';
+      const idSuffix = t.id ? `  ${t.id}` : '';
       timelineEntries.push({
-        text: lines.join('\n'),
+        text: `  💬 ${ago} Topic #${t.seq || '?'} ${title} ${statusIcon(status)} ${status}${idSuffix}`,
         time: new Date(t.createdAt).getTime(),
       });
     }
@@ -346,37 +414,60 @@ export const buildTaskRunPrompt = (input: TaskRunPromptInput, now?: Date): strin
   if (activities?.briefs) {
     for (const b of activities.briefs) {
       const ago = timeAgo(b.createdAt, now);
-      const idAttr = b.id ? ` id="${b.id}"` : '';
-      const priAttr = b.priority ? ` priority="${b.priority}"` : '';
-      let resolvedAttr = '';
-      if (b.resolvedAt) {
-        resolvedAttr = b.resolvedAction
-          ? ` resolved="${b.resolvedAction}${b.resolvedComment ? `: ${b.resolvedComment}` : ''}"`
-          : ' resolved="true"';
+      let resolved = '';
+      if (b.resolvedAt && b.resolvedAction) {
+        resolved = b.resolvedComment ? ` ✏️ ${b.resolvedComment}` : ` ✅ ${b.resolvedAction}`;
       }
-      const lines = [
-        `<brief${idAttr} type="${b.type}"${priAttr}${resolvedAttr} time="${ago}">`,
-        `  ${b.title}`,
-        `  ${b.summary}`,
-        '</brief>',
-      ];
+      const priStr = b.priority ? ` [${b.priority}]` : '';
+      const idSuffix = b.id ? `  ${b.id}` : '';
       timelineEntries.push({
-        text: lines.join('\n'),
+        text: `  ${briefIcon(b.type)} ${ago} Brief [${b.type}] ${b.title}${priStr}${resolved}${idSuffix}`,
         time: new Date(b.createdAt).getTime(),
       });
     }
   }
 
-  if (timelineEntries.length > 0) {
-    timelineEntries.sort((a, b) => b.time - a.time);
-    sections.push(`<activities>\n${timelineEntries.map((e) => e.text).join('\n')}\n</activities>`);
+  if (activities?.comments) {
+    for (const c of activities.comments) {
+      const author = c.agentId ? '🤖 agent' : '👤 user';
+      const ago = c.createdAt ? timeAgo(c.createdAt, now) : '';
+      const truncated = c.content.length > 80 ? c.content.slice(0, 80) + '...' : c.content;
+      timelineEntries.push({
+        text: `  💭 ${ago} ${author} ${truncated}`,
+        time: c.createdAt ? new Date(c.createdAt).getTime() : 0,
+      });
+    }
   }
 
-  // ── 4. Original Task ──
-  const descAttr = task.description ? ` description="${task.description}"` : '';
-  sections.push(
-    `<task name="${task.name || task.identifier}" identifier="${task.identifier}"${descAttr}>\n${task.instruction}\n</task>`,
-  );
+  if (timelineEntries.length > 0) {
+    timelineEntries.sort((a, b) => a.time - b.time);
+    taskLines.push('');
+    taskLines.push('Activities:');
+    taskLines.push(...timelineEntries.map((e) => e.text));
+  }
+
+  // Parent task context
+  if (parentTask) {
+    taskLines.push('');
+    taskLines.push(
+      `<parentTask identifier="${parentTask.identifier}" name="${parentTask.name || parentTask.identifier}">`,
+    );
+    taskLines.push(`  Instruction: ${parentTask.instruction}`);
+    if (parentTask.subtasks && parentTask.subtasks.length > 0) {
+      taskLines.push(`  Subtasks (${parentTask.subtasks.length}):`);
+      for (const s of parentTask.subtasks) {
+        const dep = s.blockedBy ? ` ← blocks: ${s.blockedBy}` : '';
+        const marker = s.identifier === task.identifier ? ' ◀ current' : '';
+        taskLines.push(
+          `    ${s.identifier} ${statusIcon(s.status)} ${s.status} ${s.name || '(unnamed)'}${dep}${marker}`,
+        );
+      }
+    }
+    taskLines.push('</parentTask>');
+  }
+
+  taskLines.push('</task>');
+  sections.push(taskLines.join('\n'));
 
   return sections.join('\n\n');
 };

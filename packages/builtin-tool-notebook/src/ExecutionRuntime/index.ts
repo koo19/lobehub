@@ -125,6 +125,13 @@ export class NotebookExecutionRuntime {
     try {
       const { title, content, type = 'markdown' } = args;
 
+      if (!content) {
+        return {
+          content: 'Error: Missing content. The document content is required.',
+          success: false,
+        };
+      }
+
       if (!options?.topicId) {
         return {
           content: 'Error: No topic context. Documents must be created within a topic.',

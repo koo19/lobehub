@@ -85,8 +85,8 @@ describe('buildTaskRunPrompt', () => {
     );
 
     expect(result).toMatchSnapshot();
-    expect(result).toContain('role="agent"');
-    expect(result).toContain('role="user"');
+    expect(result).toContain('🤖 agent');
+    expect(result).toContain('👤 user');
     expect(result).toContain('3h ago');
     expect(result).toContain('2h ago');
   });
@@ -169,15 +169,16 @@ describe('buildTaskRunPrompt', () => {
     );
 
     expect(result).toMatchSnapshot();
-    // Verify timeline is sorted reverse-chronologically (newest first)
+    // Verify timeline is sorted chronologically (oldest first)
     // Data: topic1(17:00), brief1(17:05), topic2(17:31), brief2(18:00)
-    // Descending: brief2 > topic2 > brief1 > topic1
-    const history = result.split('<activities>')[1]?.split('</activities>')[0] || '';
-    const brief2Idx = history.indexOf('id="brief_def456"');
-    const topic2Idx = history.indexOf('seq="2"');
-    const topic1Idx = history.indexOf('seq="1"');
-    expect(brief2Idx).toBeLessThan(topic2Idx);
-    expect(topic2Idx).toBeLessThan(topic1Idx);
+    const taskSection = result.match(/<task>[\s\S]*<\/task>/)?.[0] || '';
+    const topic1Idx = taskSection.indexOf('Topic #1');
+    const brief1Idx = taskSection.indexOf('brief_abc123');
+    const topic2Idx = taskSection.indexOf('Topic #2');
+    const brief2Idx = taskSection.indexOf('brief_def456');
+    expect(topic1Idx).toBeLessThan(brief1Idx);
+    expect(brief1Idx).toBeLessThan(topic2Idx);
+    expect(topic2Idx).toBeLessThan(brief2Idx);
   });
 
   it('should show resolved action and comment on briefs', () => {
@@ -206,7 +207,7 @@ describe('buildTaskRunPrompt', () => {
     );
 
     expect(result).toMatchSnapshot();
-    expect(result).toContain('feedback: 第2章需要更多实例');
+    expect(result).toContain('第2章需要更多实例');
   });
 
   it('should handle full scenario with all sections', () => {
@@ -252,8 +253,8 @@ describe('buildTaskRunPrompt', () => {
 
     expect(result).toMatchSnapshot();
 
-    // Verify order: instruction → feedback → activities → task
-    const tags = ['<high_priority_instruction>', '<user_feedback>', '<activities>', '<task'];
+    // Verify order: instruction → feedback → task (activities now inside task)
+    const tags = ['<high_priority_instruction>', '<user_feedback>', '<task>'];
     let lastIdx = -1;
     for (const tag of tags) {
       const idx = result.indexOf(tag);
@@ -284,44 +285,38 @@ describe('buildTaskRunPrompt', () => {
     expect(result).not.toContain('<activities>');
   });
 
-  it('should include subtasks in activities', () => {
+  it('should include subtasks in task section', () => {
     const result = buildTaskRunPrompt(
       {
-        activities: {
-          subtasks: [
-            {
-              createdAt: '2026-03-21T18:00:00Z',
-              id: 'task_aaa',
-              identifier: 'TASK-2',
-              name: '第1章 Agent 概述',
-              status: 'backlog',
-            },
-            {
-              createdAt: '2026-03-21T18:01:00Z',
-              id: 'task_bbb',
-              identifier: 'TASK-3',
-              name: '第2章 快速上手',
-              status: 'running',
-            },
-          ],
-        },
         task: {
+          id: 'task_root',
           identifier: 'TASK-1',
           instruction: '写书',
           name: '写一本书',
+          status: 'running',
+          subtasks: [
+            { identifier: 'TASK-2', name: '第1章 Agent 概述', priority: 3, status: 'completed' },
+            {
+              blockedBy: 'TASK-2',
+              identifier: 'TASK-3',
+              name: '第2章 快速上手',
+              priority: 3,
+              status: 'backlog',
+            },
+          ],
         },
       },
       NOW,
     );
 
     expect(result).toMatchSnapshot();
-    expect(result).toContain('<subtask');
-    expect(result).toContain('identifier="TASK-2"');
-    expect(result).toContain('identifier="TASK-3"');
+    expect(result).toContain('TASK-2');
+    expect(result).toContain('TASK-3');
+    expect(result).toContain('← blocks: TASK-2');
   });
 
-  it('should truncate comments to 50 chars in activities but keep full in user_feedback', () => {
-    const longContent = 'A'.repeat(60) + ' — this part should be truncated in activities';
+  it('should truncate comments to 80 chars in activities but keep full in user_feedback', () => {
+    const longContent = 'A'.repeat(90) + ' — this part should be truncated in activities';
     const result = buildTaskRunPrompt(
       {
         activities: {
@@ -341,9 +336,90 @@ describe('buildTaskRunPrompt', () => {
     const feedbackSection = result.split('<user_feedback>')[1]?.split('</user_feedback>')[0] || '';
     expect(feedbackSection).toContain(longContent);
     // activities comment should be truncated
-    const activitiesSection = result.split('<activities>')[1]?.split('</activities>')[0] || '';
-    expect(activitiesSection).toContain('...');
-    expect(activitiesSection).not.toContain(longContent);
+    const taskSection = result.match(/<task>[\s\S]*<\/task>/)?.[0] || '';
+    expect(taskSection).toContain('...');
+    expect(taskSection).not.toContain(longContent);
+  });
+
+  it('should include subtasks in task tag when provided', () => {
+    const result = buildTaskRunPrompt(
+      {
+        task: {
+          id: 'task_001',
+          identifier: 'TASK-1',
+          instruction: '写一本 AI Agent 书，目标 8 章',
+          name: '写一本书',
+          status: 'running',
+          subtasks: [
+            { identifier: 'TASK-2', name: '第1章 AI Agent 概述', priority: 3, status: 'running' },
+            { identifier: 'TASK-3', name: '第2章 核心架构', priority: 3, status: 'backlog' },
+            { identifier: 'TASK-4', name: '第3章 手写 Agent', priority: 2, status: 'backlog' },
+          ],
+        },
+      },
+      NOW,
+    );
+
+    expect(result).toMatchSnapshot();
+    // Verify subtasks appear between <task> and </task>
+    const taskMatch = result.match(/<task>[\s\S]*<\/task>/)?.[0] || '';
+    expect(taskMatch).toContain('Subtasks:');
+    expect(taskMatch).toContain('TASK-2');
+    expect(taskMatch).toContain('TASK-3');
+    expect(taskMatch).toContain('TASK-4');
+    // Verify hint is present
+    expect(taskMatch).toContain('Do NOT call viewTask');
+  });
+
+  it('should include parentTask context for subtasks', () => {
+    const result = buildTaskRunPrompt(
+      {
+        parentTask: {
+          identifier: 'TASK-1',
+          instruction: '写一本 AI Agent 书，目标 8 章',
+          name: '写一本书',
+          subtasks: [
+            { identifier: 'TASK-2', name: '第1章 概述', priority: 3, status: 'completed' },
+            {
+              blockedBy: 'TASK-2',
+              identifier: 'TASK-4',
+              name: '第2章 核心架构',
+              priority: 3,
+              status: 'running',
+            },
+            {
+              blockedBy: 'TASK-4',
+              identifier: 'TASK-6',
+              name: '第3章 手写 Agent',
+              priority: 2,
+              status: 'backlog',
+            },
+          ],
+        },
+        task: {
+          id: 'task_004',
+          identifier: 'TASK-4',
+          instruction: '撰写第2章',
+          name: '第2章 核心架构',
+          parentIdentifier: 'TASK-1',
+          status: 'running',
+        },
+      },
+      NOW,
+    );
+
+    expect(result).toMatchSnapshot();
+    // Verify parentTask block exists inside <task>
+    const taskSection = result.match(/<task>[\s\S]*<\/task>/)?.[0] || '';
+    expect(taskSection).toContain('<parentTask');
+    expect(taskSection).toContain('TASK-1');
+    expect(taskSection).toContain('写一本 AI Agent 书');
+    // Current task should be marked
+    expect(taskSection).toContain('TASK-4');
+    expect(taskSection).toContain('◀ current');
+    // Dependency info
+    expect(taskSection).toContain('← blocks: TASK-2');
+    expect(taskSection).toContain('← blocks: TASK-4');
   });
 
   it('should only include user comments in user_feedback, not agent comments', () => {
@@ -369,8 +445,8 @@ describe('buildTaskRunPrompt', () => {
     expect(feedbackSection).toContain('用户反馈');
     expect(feedbackSection).not.toContain('Agent 回复');
     // But activities should have both
-    const activitiesSection = result.split('<activities>')[1]?.split('</activities>')[0] || '';
-    expect(activitiesSection).toContain('role="user"');
-    expect(activitiesSection).toContain('role="agent"');
+    const taskSection = result.match(/<task>[\s\S]*<\/task>/)?.[0] || '';
+    expect(taskSection).toContain('👤 user');
+    expect(taskSection).toContain('🤖 agent');
   });
 });
