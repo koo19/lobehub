@@ -8,22 +8,22 @@ describe('resolveAgentOnboardingContext', () => {
       bootstrapContext: {
         agentOnboarding: {
           activeTopicId: 'topic-bootstrap',
-          completedNodes: ['telemetry'],
-          currentNode: 'telemetry',
+          completedNodes: ['agentIdentity'],
+          currentNode: 'agentIdentity',
           version: 1,
         },
         topicId: 'topic-bootstrap',
       },
       storedAgentOnboarding: {
         activeTopicId: 'topic-store',
-        completedNodes: ['telemetry'],
-        currentNode: 'fullName',
+        completedNodes: ['agentIdentity'],
+        currentNode: 'userIdentity',
         version: 1,
       },
     });
 
     expect(result).toEqual({
-      currentNode: 'fullName',
+      currentNode: 'userIdentity',
       topicId: 'topic-store',
     });
   });
@@ -33,21 +33,21 @@ describe('resolveAgentOnboardingContext', () => {
       bootstrapContext: {
         agentOnboarding: {
           activeTopicId: 'topic-bootstrap',
-          completedNodes: ['telemetry', 'fullName'],
-          currentNode: 'interests',
+          completedNodes: ['agentIdentity', 'userIdentity'],
+          currentNode: 'workStyle',
           version: 1,
         },
         topicId: 'topic-bootstrap',
       },
       storedAgentOnboarding: {
-        completedNodes: ['telemetry', 'fullName'],
-        currentNode: 'interests',
+        completedNodes: ['agentIdentity', 'userIdentity'],
+        currentNode: 'workStyle',
         version: 1,
       },
     });
 
     expect(result).toEqual({
-      currentNode: 'interests',
+      currentNode: 'workStyle',
       topicId: 'topic-bootstrap',
     });
   });

@@ -13,7 +13,7 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
         properties: {},
         type: 'object',
       },
-      renderDisplayControl: 'alwaysExpand',
+      renderDisplayControl: 'collapsed',
     },
     {
       description:
@@ -23,9 +23,11 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
         properties: {
           node: {
             enum: [
-              'telemetry',
-              'fullName',
-              'interests',
+              'agentIdentity',
+              'userIdentity',
+              'workStyle',
+              'workContext',
+              'painPoints',
               'responseLanguage',
               'proSettings',
               'summary',
@@ -34,6 +36,15 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
           },
           patch: {
             properties: {
+              agentIdentity: {
+                properties: {
+                  emoji: { type: 'string' },
+                  name: { type: 'string' },
+                  nature: { type: 'string' },
+                  vibe: { type: 'string' },
+                },
+                type: 'object',
+              },
               defaultModel: {
                 properties: {
                   model: { type: 'string' },
@@ -41,13 +52,66 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
                 },
                 type: 'object',
               },
-              fullName: { type: 'string' },
-              interests: {
-                items: { type: 'string' },
-                type: 'array',
+              painPoints: {
+                properties: {
+                  blockedBy: {
+                    items: { type: 'string' },
+                    type: 'array',
+                  },
+                  frustrations: {
+                    items: { type: 'string' },
+                    type: 'array',
+                  },
+                  noTimeFor: {
+                    items: { type: 'string' },
+                    type: 'array',
+                  },
+                  summary: { type: 'string' },
+                },
+                type: 'object',
               },
               responseLanguage: { type: 'string' },
-              telemetry: { type: 'boolean' },
+              userIdentity: {
+                properties: {
+                  domainExpertise: { type: 'string' },
+                  name: { type: 'string' },
+                  professionalRole: { type: 'string' },
+                  summary: { type: 'string' },
+                },
+                type: 'object',
+              },
+              workContext: {
+                properties: {
+                  activeProjects: {
+                    items: { type: 'string' },
+                    type: 'array',
+                  },
+                  currentFocus: { type: 'string' },
+                  interests: {
+                    items: { type: 'string' },
+                    type: 'array',
+                  },
+                  summary: { type: 'string' },
+                  thisQuarter: { type: 'string' },
+                  thisWeek: { type: 'string' },
+                  tools: {
+                    items: { type: 'string' },
+                    type: 'array',
+                  },
+                },
+                type: 'object',
+              },
+              workStyle: {
+                properties: {
+                  communicationStyle: { type: 'string' },
+                  decisionMaking: { type: 'string' },
+                  socialMode: { type: 'string' },
+                  summary: { type: 'string' },
+                  thinkingPreferences: { type: 'string' },
+                  workStyle: { type: 'string' },
+                },
+                type: 'object',
+              },
             },
             type: 'object',
           },
@@ -64,9 +128,11 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
         properties: {
           node: {
             enum: [
-              'telemetry',
-              'fullName',
-              'interests',
+              'agentIdentity',
+              'userIdentity',
+              'workStyle',
+              'workContext',
+              'painPoints',
               'responseLanguage',
               'proSettings',
               'summary',

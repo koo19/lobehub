@@ -1,6 +1,6 @@
 'use client';
 
-import { Center, Flexbox, Text } from '@lobehub/ui';
+import { Center, Flexbox } from '@lobehub/ui';
 import { Divider } from 'antd';
 import { cx } from 'antd-style';
 import { type FC, type PropsWithChildren } from 'react';
@@ -37,11 +37,6 @@ const OnBoardingContainer: FC<PropsWithChildren> = ({ children }) => {
         </Flexbox>
         <Center height={'100%'} padding={16} width={'100%'}>
           {children}
-        </Center>
-        <Center padding={24}>
-          <Text align={'center'} type={'secondary'}>
-            © 2026 LobeHub. All rights reserved.
-          </Text>
         </Center>
       </Flexbox>
     </Flexbox>

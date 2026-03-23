@@ -16,35 +16,6 @@ import { useUserStore } from '@/store/user';
 import { settingsSelectors } from '@/store/user/selectors';
 import { isDev } from '@/utils/env';
 
-const TelemetryActions = memo(() => {
-  const { t } = useTranslation('onboarding');
-  const sendMessage = useConversationStore((s) => s.sendMessage);
-  const loading = useConversationStore(messageStateSelectors.isInputLoading);
-
-  return (
-    <Flexbox gap={12}>
-      <Text type={'secondary'}>{t('agent.telemetryHint')}</Text>
-      <Flexbox horizontal gap={8}>
-        <Button
-          disabled={loading}
-          type={'primary'}
-          onClick={() => sendMessage({ message: 'I consent to anonymous telemetry.' })}
-        >
-          {t('agent.telemetryAllow')}
-        </Button>
-        <Button
-          disabled={loading}
-          onClick={() => sendMessage({ message: 'Do not enable telemetry for me.' })}
-        >
-          {t('agent.telemetryDecline')}
-        </Button>
-      </Flexbox>
-    </Flexbox>
-  );
-});
-
-TelemetryActions.displayName = 'TelemetryActions';
-
 const ResponseLanguageActions = memo(() => {
   const { t } = useTranslation('onboarding');
   const switchLocale = useGlobalStore((s) => s.switchLocale);
@@ -168,9 +139,6 @@ interface StructuredActionsProps {
 
 const StructuredActions = memo<StructuredActionsProps>(({ currentNode }) => {
   switch (currentNode) {
-    case 'telemetry': {
-      return <TelemetryActions />;
-    }
     case 'responseLanguage': {
       return <ResponseLanguageActions />;
     }

@@ -17,12 +17,21 @@ import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { AgentService } from '@/server/services/agent';
 import { isDev } from '@/utils/env';
 
+type OnboardingAgentIdentity = NonNullable<UserAgentOnboarding['agentIdentity']>;
+type OnboardingPainPoints = NonNullable<UserAgentOnboardingDraft['painPoints']>;
+type OnboardingUserIdentity = NonNullable<UserAgentOnboardingDraft['userIdentity']>;
+type OnboardingWorkContext = NonNullable<UserAgentOnboardingDraft['workContext']>;
+type OnboardingWorkStyle = NonNullable<UserAgentOnboardingDraft['workStyle']>;
+
 const defaultAgentOnboardingState = (): UserAgentOnboarding => ({
   completedNodes: [],
   currentNode: AGENT_ONBOARDING_NODES[0],
   draft: {},
   version: CURRENT_ONBOARDING_VERSION,
 });
+
+const isValidNode = (node?: string): node is UserAgentOnboardingNode =>
+  !!node && AGENT_ONBOARDING_NODES.includes(node as UserAgentOnboardingNode);
 
 const getNextNode = (node?: UserAgentOnboardingNode) => {
   if (!node) return undefined;
@@ -35,13 +44,198 @@ const getNextNode = (node?: UserAgentOnboardingNode) => {
 
 const dedupeNodes = (nodes: UserAgentOnboardingNode[] = []) => Array.from(new Set(nodes));
 
+const sanitizeText = (value?: string) => value?.trim() || undefined;
+
+const sanitizeTextList = (items?: string[], max = 8) =>
+  (items ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, max);
+
+const getNodeIndex = (node?: UserAgentOnboardingNode) =>
+  node ? AGENT_ONBOARDING_NODES.indexOf(node) : -1;
+
+const normalizeAgentIdentity = (
+  value?: UserAgentOnboardingDraft['agentIdentity'],
+): OnboardingAgentIdentity | undefined => {
+  const emoji = sanitizeText(value?.emoji);
+  const name = sanitizeText(value?.name);
+  const nature = sanitizeText(value?.nature);
+  const vibe = sanitizeText(value?.vibe);
+
+  if (!emoji || !name || !nature || !vibe) return undefined;
+
+  return { emoji, name, nature, vibe };
+};
+
+const normalizeUserIdentity = (
+  value?: UserAgentOnboardingDraft['userIdentity'],
+): OnboardingUserIdentity | undefined => {
+  const summary = sanitizeText(value?.summary);
+
+  if (!summary) return undefined;
+
+  return {
+    ...(sanitizeText(value?.domainExpertise)
+      ? { domainExpertise: sanitizeText(value?.domainExpertise) }
+      : {}),
+    ...(sanitizeText(value?.name) ? { name: sanitizeText(value?.name) } : {}),
+    ...(sanitizeText(value?.professionalRole)
+      ? { professionalRole: sanitizeText(value?.professionalRole) }
+      : {}),
+    summary,
+  };
+};
+
+const normalizeWorkStyle = (
+  value?: UserAgentOnboardingDraft['workStyle'],
+): OnboardingWorkStyle | undefined => {
+  const summary = sanitizeText(value?.summary);
+
+  if (!summary) return undefined;
+
+  return {
+    ...(sanitizeText(value?.communicationStyle)
+      ? { communicationStyle: sanitizeText(value?.communicationStyle) }
+      : {}),
+    ...(sanitizeText(value?.decisionMaking)
+      ? { decisionMaking: sanitizeText(value?.decisionMaking) }
+      : {}),
+    ...(sanitizeText(value?.socialMode) ? { socialMode: sanitizeText(value?.socialMode) } : {}),
+    summary,
+    ...(sanitizeText(value?.thinkingPreferences)
+      ? { thinkingPreferences: sanitizeText(value?.thinkingPreferences) }
+      : {}),
+    ...(sanitizeText(value?.workStyle) ? { workStyle: sanitizeText(value?.workStyle) } : {}),
+  };
+};
+
+const normalizeWorkContext = (
+  value?: UserAgentOnboardingDraft['workContext'],
+): OnboardingWorkContext | undefined => {
+  const summary = sanitizeText(value?.summary);
+
+  if (!summary) return undefined;
+
+  const activeProjects = sanitizeTextList(value?.activeProjects);
+  const interests = sanitizeTextList(value?.interests);
+  const tools = sanitizeTextList(value?.tools);
+
+  return {
+    ...(activeProjects.length > 0 ? { activeProjects } : {}),
+    ...(sanitizeText(value?.currentFocus)
+      ? { currentFocus: sanitizeText(value?.currentFocus) }
+      : {}),
+    ...(interests.length > 0 ? { interests } : {}),
+    summary,
+    ...(sanitizeText(value?.thisQuarter) ? { thisQuarter: sanitizeText(value?.thisQuarter) } : {}),
+    ...(sanitizeText(value?.thisWeek) ? { thisWeek: sanitizeText(value?.thisWeek) } : {}),
+    ...(tools.length > 0 ? { tools } : {}),
+  };
+};
+
+const normalizePainPoints = (
+  value?: UserAgentOnboardingDraft['painPoints'],
+): OnboardingPainPoints | undefined => {
+  const summary = sanitizeText(value?.summary);
+
+  if (!summary) return undefined;
+
+  const blockedBy = sanitizeTextList(value?.blockedBy);
+  const frustrations = sanitizeTextList(value?.frustrations);
+  const noTimeFor = sanitizeTextList(value?.noTimeFor);
+
+  return {
+    ...(blockedBy.length > 0 ? { blockedBy } : {}),
+    ...(frustrations.length > 0 ? { frustrations } : {}),
+    ...(noTimeFor.length > 0 ? { noTimeFor } : {}),
+    summary,
+  };
+};
+
+const extractDraftForNode = (
+  node: UserAgentOnboardingNode,
+  patch: UserAgentOnboardingDraft,
+): Partial<UserAgentOnboardingDraft> | undefined => {
+  switch (node) {
+    case 'agentIdentity': {
+      const agentIdentity = normalizeAgentIdentity(patch.agentIdentity);
+      return agentIdentity ? { agentIdentity } : undefined;
+    }
+    case 'userIdentity': {
+      const userIdentity = normalizeUserIdentity(patch.userIdentity);
+      return userIdentity ? { userIdentity } : undefined;
+    }
+    case 'workStyle': {
+      const workStyle = normalizeWorkStyle(patch.workStyle);
+      return workStyle ? { workStyle } : undefined;
+    }
+    case 'workContext': {
+      const workContext = normalizeWorkContext(patch.workContext);
+      return workContext ? { workContext } : undefined;
+    }
+    case 'painPoints': {
+      const painPoints = normalizePainPoints(patch.painPoints);
+      return painPoints ? { painPoints } : undefined;
+    }
+    case 'responseLanguage': {
+      const responseLanguage = sanitizeText(patch.responseLanguage);
+      return responseLanguage ? { responseLanguage } : undefined;
+    }
+    case 'proSettings': {
+      return patch.defaultModel ? { defaultModel: patch.defaultModel } : undefined;
+    }
+    case 'summary': {
+      return undefined;
+    }
+  }
+};
+
+const getNodeRecoveryInstruction = (node: UserAgentOnboardingNode) => {
+  switch (node) {
+    case 'agentIdentity': {
+      return 'Stay on agentIdentity. Do not call userIdentity yet. Ask the user to define your name, nature, vibe, and emoji, or offer concrete defaults and confirm one.';
+    }
+    case 'userIdentity': {
+      return 'Stay on userIdentity. Ask who the user is, what they do, and what domain they work in. Capture a concise summary plus any available name, role, or domain expertise.';
+    }
+    case 'workStyle': {
+      return 'Stay on workStyle. Ask how the user thinks, decides, communicates, and works with others. Capture a concise summary of their style.';
+    }
+    case 'workContext': {
+      return 'Stay on workContext. Ask about current focus, active projects, interests, tools, and near-term priorities. Capture a concise summary plus any concrete details.';
+    }
+    case 'painPoints': {
+      return 'Stay on painPoints. Ask what is blocked, frustrating, repetitive, or never gets enough time. Capture the actual friction, not generic preferences.';
+    }
+    case 'responseLanguage': {
+      return 'Stay on responseLanguage. Ask which language the user wants as the default reply language.';
+    }
+    case 'proSettings': {
+      return 'Stay on proSettings. Capture a default model/provider only if the user gives one or says they are ready to continue.';
+    }
+    case 'summary': {
+      return 'Stay on summary. Summarize the committed setup and ask for final confirmation before calling finishAgentOnboarding.';
+    }
+  }
+};
+
 const createWelcomeMessage = (node: UserAgentOnboardingNode) => {
   switch (node) {
-    case 'fullName': {
-      return "Let's continue. What should I call you?";
+    case 'agentIdentity': {
+      return "I just came online, so I'm still figuring out who I am. Help me pick a name, a vibe, and an emoji for me.";
     }
-    case 'interests': {
-      return 'What do you mainly want help with? You can mention a few interests or workflows.';
+    case 'userIdentity': {
+      return "Your turn. What's your name or handle, and what kind of work do you actually do?";
+    }
+    case 'workStyle': {
+      return 'How do you like to think and work? Fast and intuitive, methodical and data-heavy, solo deep work, fast collaboration, something else?';
+    }
+    case 'workContext': {
+      return 'What are you working on right now, and what tools or domains do you keep reaching for?';
+    }
+    case 'painPoints': {
+      return "Where's the friction right now? What's eating time, slowing you down, or staying half-done because you never get to it?";
     }
     case 'responseLanguage': {
       return 'Which language should I use by default when I reply to you?';
@@ -52,10 +246,7 @@ const createWelcomeMessage = (node: UserAgentOnboardingNode) => {
         : `The default model is preset to ${ONBOARDING_PRODUCTION_DEFAULT_MODEL.provider}/${ONBOARDING_PRODUCTION_DEFAULT_MODEL.model}. You can connect tools now, then continue here when you are ready.`;
     }
     case 'summary': {
-      return 'I have everything I need. Review the setup summary and tell me if it looks good.';
-    }
-    case 'telemetry': {
-      return 'Welcome. I will guide you through a quick setup. First, do you want to share anonymous telemetry to help improve the product?';
+      return "I have the shape of you now. I'll summarize what I learned and what I can help with next. Tell me if it lands.";
     }
   }
 };
@@ -63,8 +254,13 @@ const createWelcomeMessage = (node: UserAgentOnboardingNode) => {
 interface ProposePatchResult {
   committedValue?: unknown;
   content: string;
+  currentNode?: UserAgentOnboardingNode;
   draft: UserAgentOnboardingDraft;
+  instruction?: string;
+  mismatch?: boolean;
   nextAction: 'ask' | 'commit' | 'confirm';
+  requestedNode?: UserAgentOnboardingNode;
+  savedDraftFields?: (keyof UserAgentOnboardingDraft)[];
   success: boolean;
 }
 
@@ -87,13 +283,25 @@ export class OnboardingService {
   }
 
   private ensureState = (state?: UserAgentOnboarding): UserAgentOnboarding => {
+    if (
+      !state ||
+      !isValidNode(state.currentNode) ||
+      (state.completedNodes ?? []).some((node) => !isValidNode(node)) ||
+      (state.version ?? 0) < CURRENT_ONBOARDING_VERSION
+    ) {
+      return defaultAgentOnboardingState();
+    }
+
     const nextState = merge(defaultAgentOnboardingState(), state ?? {});
 
     return {
       ...nextState,
-      completedNodes: dedupeNodes(nextState.completedNodes),
-      currentNode: nextState.currentNode ?? AGENT_ONBOARDING_NODES[0],
+      completedNodes: dedupeNodes((nextState.completedNodes ?? []).filter(isValidNode)),
+      currentNode: isValidNode(nextState.currentNode)
+        ? nextState.currentNode
+        : AGENT_ONBOARDING_NODES[0],
       draft: nextState.draft ?? {},
+      profile: nextState.profile ?? {},
       version: nextState.version ?? CURRENT_ONBOARDING_VERSION,
     };
   };
@@ -175,16 +383,31 @@ export class OnboardingService {
 
     return {
       committed: {
+        agentIdentity: state.agentIdentity,
         defaultModel: userState.settings.defaultAgent?.config
           ? {
               model: userState.settings.defaultAgent.config.model,
               provider: userState.settings.defaultAgent.config.provider,
             }
           : undefined,
-        fullName: userState.fullName,
-        interests: userState.interests,
+        profile: {
+          ...state.profile,
+          ...(userState.fullName && !state.profile?.identity?.name
+            ? {
+                identity: {
+                  ...state.profile?.identity,
+                  name: userState.fullName,
+                  summary: state.profile?.identity?.summary ?? userState.fullName,
+                },
+              }
+            : {}),
+          ...(userState.interests?.length && !(state.profile?.workContext?.interests?.length ?? 0)
+            ? {
+                interests: userState.interests,
+              }
+            : {}),
+        },
         responseLanguage: userState.settings.general?.responseLanguage,
-        telemetry: userState.settings.general?.telemetry,
       },
       completedNodes: state.completedNodes ?? [],
       currentNode: state.currentNode ?? AGENT_ONBOARDING_NODES[0],
@@ -203,10 +426,42 @@ export class OnboardingService {
     const currentNode = context.currentNode;
 
     if (params.node !== currentNode) {
+      const currentNodeIndex = getNodeIndex(currentNode);
+      const requestedNodeIndex = getNodeIndex(params.node);
+      const recoverableDraft =
+        requestedNodeIndex > currentNodeIndex
+          ? extractDraftForNode(params.node, params.patch)
+          : undefined;
+
+      if (recoverableDraft) {
+        const draft = { ...context.draft, ...recoverableDraft };
+        const instruction = getNodeRecoveryInstruction(currentNode);
+
+        await this.saveState({ ...(await this.ensurePersistedState()), draft });
+
+        return {
+          content: `Node mismatch: current node is "${currentNode}", but you called "${params.node}". I saved the later-step draft for "${params.node}", but do not advance yet. ${instruction}`,
+          currentNode,
+          draft,
+          instruction,
+          mismatch: true,
+          nextAction: 'ask',
+          requestedNode: params.node,
+          savedDraftFields: Object.keys(recoverableDraft) as (keyof UserAgentOnboardingDraft)[],
+          success: false,
+        };
+      }
+
+      const instruction = getNodeRecoveryInstruction(currentNode);
+
       return {
-        content: `Current onboarding node is "${currentNode}", not "${params.node}". Continue from the current node.`,
+        content: `Node mismatch: current node is "${currentNode}", but you called "${params.node}". ${instruction}`,
+        currentNode,
         draft: context.draft,
+        instruction,
+        mismatch: true,
         nextAction: 'ask',
+        requestedNode: params.node,
         success: false,
       };
     }
@@ -214,76 +469,130 @@ export class OnboardingService {
     const patch = params.patch;
 
     switch (currentNode) {
-      case 'telemetry': {
-        if (typeof patch.telemetry !== 'boolean') {
+      case 'agentIdentity': {
+        const agentIdentity = normalizeAgentIdentity(patch.agentIdentity);
+
+        if (!agentIdentity) {
           return {
-            content: 'Telemetry consent is missing. Ask the user for a clear yes or no.',
+            content:
+              'Agent identity is incomplete. Capture a name, nature, vibe, and emoji before moving on.',
             draft: context.draft,
             nextAction: 'ask',
             success: false,
           };
         }
 
-        const draft = { ...context.draft, telemetry: patch.telemetry };
+        const draft = { ...context.draft, agentIdentity };
 
         await this.saveState({ ...(await this.ensurePersistedState()), draft });
         const commitResult = await this.commitNode(currentNode);
 
         return {
-          committedValue: patch.telemetry,
+          committedValue: agentIdentity,
           content: commitResult.content,
           draft: {},
           nextAction: 'ask',
           success: commitResult.success,
         };
       }
-      case 'fullName': {
-        const fullName = patch.fullName?.trim();
+      case 'userIdentity': {
+        const userIdentity = normalizeUserIdentity(patch.userIdentity);
 
-        if (!fullName) {
+        if (!userIdentity) {
           return {
-            content: 'Name is still missing. Ask the user what they want to be called.',
+            content:
+              'User identity is still too thin. Capture at least a concise summary plus any available name, role, or domain expertise.',
             draft: context.draft,
             nextAction: 'ask',
             success: false,
           };
         }
 
-        const draft = { ...context.draft, fullName };
+        const draft = { ...context.draft, userIdentity };
 
         await this.saveState({ ...(await this.ensurePersistedState()), draft });
         const commitResult = await this.commitNode(currentNode);
 
         return {
-          committedValue: fullName,
+          committedValue: userIdentity,
           content: commitResult.content,
           draft: {},
           nextAction: 'ask',
           success: commitResult.success,
         };
       }
-      case 'interests': {
-        const interests = (patch.interests ?? [])
-          .map((item) => item.trim())
-          .filter(Boolean)
-          .slice(0, 8);
+      case 'workStyle': {
+        const workStyle = normalizeWorkStyle(patch.workStyle);
 
-        if (interests.length === 0) {
+        if (!workStyle) {
           return {
-            content: 'No interests were captured. Ask the user what they want help with.',
+            content:
+              'Work style is still unclear. Capture a concise summary of how the user thinks, decides, and likes to communicate.',
             draft: context.draft,
             nextAction: 'ask',
             success: false,
           };
         }
 
-        const draft = { ...context.draft, interests };
+        const draft = { ...context.draft, workStyle };
 
         await this.saveState({ ...(await this.ensurePersistedState()), draft });
         const commitResult = await this.commitNode(currentNode);
 
         return {
-          committedValue: interests,
+          committedValue: workStyle,
+          content: commitResult.content,
+          draft: {},
+          nextAction: 'ask',
+          success: commitResult.success,
+        };
+      }
+      case 'workContext': {
+        const workContext = normalizeWorkContext(patch.workContext);
+
+        if (!workContext) {
+          return {
+            content:
+              'Current work context is missing. Capture a concise summary plus the user’s current focus, projects, interests, or tools.',
+            draft: context.draft,
+            nextAction: 'ask',
+            success: false,
+          };
+        }
+
+        const draft = { ...context.draft, workContext };
+
+        await this.saveState({ ...(await this.ensurePersistedState()), draft });
+        const commitResult = await this.commitNode(currentNode);
+
+        return {
+          committedValue: workContext,
+          content: commitResult.content,
+          draft: {},
+          nextAction: 'ask',
+          success: commitResult.success,
+        };
+      }
+      case 'painPoints': {
+        const painPoints = normalizePainPoints(patch.painPoints);
+
+        if (!painPoints) {
+          return {
+            content:
+              'Pain points are still missing. Capture a concise summary of what frustrates the user or keeps getting blocked.',
+            draft: context.draft,
+            nextAction: 'ask',
+            success: false,
+          };
+        }
+
+        const draft = { ...context.draft, painPoints };
+
+        await this.saveState({ ...(await this.ensurePersistedState()), draft });
+        const commitResult = await this.commitNode(currentNode);
+
+        return {
+          committedValue: painPoints,
           content: commitResult.content,
           draft: {},
           nextAction: 'ask',
@@ -291,7 +600,7 @@ export class OnboardingService {
         };
       }
       case 'responseLanguage': {
-        const responseLanguage = patch.responseLanguage?.trim();
+        const responseLanguage = sanitizeText(patch.responseLanguage);
 
         if (responseLanguage === undefined) {
           return {
@@ -366,43 +675,92 @@ export class OnboardingService {
     const draft = state.draft ?? {};
 
     switch (currentNode) {
-      case 'telemetry': {
-        if (typeof draft.telemetry !== 'boolean') {
+      case 'agentIdentity': {
+        if (!draft.agentIdentity) {
           return {
-            content: 'Telemetry preference has not been captured yet.',
+            content: 'Agent identity has not been captured yet.',
             nextNode: currentNode,
             success: false,
           };
         }
 
-        const currentSettings = await this.userModel.getUserSettings();
-        await this.userModel.updateSetting({
-          general: merge(currentSettings?.general || {}, { telemetry: draft.telemetry }),
-        });
+        state.agentIdentity = draft.agentIdentity;
         break;
       }
-      case 'fullName': {
-        if (!draft.fullName) {
+      case 'userIdentity': {
+        if (!draft.userIdentity) {
           return {
-            content: 'Name has not been captured yet.',
+            content: 'User identity has not been captured yet.',
             nextNode: currentNode,
             success: false,
           };
         }
 
-        await this.userModel.updateUser({ fullName: draft.fullName });
+        state.profile = {
+          ...state.profile,
+          identity: draft.userIdentity,
+        };
+
+        if (draft.userIdentity.name) {
+          await this.userModel.updateUser({ fullName: draft.userIdentity.name });
+        }
+
         break;
       }
-      case 'interests': {
-        if (!draft.interests?.length) {
+      case 'workStyle': {
+        if (!draft.workStyle) {
           return {
-            content: 'Interests have not been captured yet.',
+            content: 'Work style has not been captured yet.',
             nextNode: currentNode,
             success: false,
           };
         }
 
-        await this.userModel.updateUser({ interests: draft.interests });
+        state.profile = {
+          ...state.profile,
+          workStyle: draft.workStyle,
+        };
+        break;
+      }
+      case 'workContext': {
+        if (!draft.workContext) {
+          return {
+            content: 'Work context has not been captured yet.',
+            nextNode: currentNode,
+            success: false,
+          };
+        }
+
+        state.profile = {
+          ...state.profile,
+          currentFocus:
+            draft.workContext.currentFocus ||
+            draft.workContext.thisWeek ||
+            draft.workContext.thisQuarter ||
+            draft.workContext.summary,
+          interests: draft.workContext.interests,
+          workContext: draft.workContext,
+        };
+
+        if (draft.workContext.interests?.length) {
+          await this.userModel.updateUser({ interests: draft.workContext.interests });
+        }
+
+        break;
+      }
+      case 'painPoints': {
+        if (!draft.painPoints) {
+          return {
+            content: 'Pain points have not been captured yet.',
+            nextNode: currentNode,
+            success: false,
+          };
+        }
+
+        state.profile = {
+          ...state.profile,
+          painPoints: draft.painPoints,
+        };
         break;
       }
       case 'responseLanguage': {
@@ -449,11 +807,12 @@ export class OnboardingService {
     const completedNodes = dedupeNodes([...(state.completedNodes ?? []), currentNode]);
     const nextDraft = { ...draft };
 
-    if (currentNode === 'telemetry') delete nextDraft.telemetry;
-    if (currentNode === 'fullName') delete nextDraft.fullName;
-    if (currentNode === 'interests') delete nextDraft.interests;
+    if (currentNode === 'agentIdentity') delete nextDraft.agentIdentity;
+    if (currentNode === 'userIdentity') delete nextDraft.userIdentity;
+    if (currentNode === 'workStyle') delete nextDraft.workStyle;
+    if (currentNode === 'workContext') delete nextDraft.workContext;
+    if (currentNode === 'painPoints') delete nextDraft.painPoints;
     if (currentNode === 'responseLanguage') delete nextDraft.responseLanguage;
-
     if (currentNode === 'proSettings') delete nextDraft.defaultModel;
 
     await this.saveState({

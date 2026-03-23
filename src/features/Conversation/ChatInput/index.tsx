@@ -71,6 +71,10 @@ export interface ChatInputProps {
    */
   sendMenu?: MenuProps;
   /**
+   * Whether to show runtime config below the chat input
+   */
+  showRuntimeConfig?: boolean;
+  /**
    * Remove a small margin when placed adjacent to the ChatList
    */
   skipScrollMarginWithList?: boolean;
@@ -95,6 +99,7 @@ const ChatInput = memo<ChatInputProps>(
     sendMenu,
     sendAreaPrefix,
     sendButtonProps: customSendButtonProps,
+    showRuntimeConfig = true,
     onEditorReady,
     skipScrollMarginWithList,
   }) => {
@@ -189,6 +194,7 @@ const ChatInput = memo<ChatInputProps>(
           extraActionItems={extraActionItems}
           leftContent={leftContent}
           sendAreaPrefix={sendAreaPrefix}
+          showRuntimeConfig={showRuntimeConfig}
         />
       </WideScreenContainer>
     );

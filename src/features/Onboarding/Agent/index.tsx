@@ -91,16 +91,10 @@ const AgentOnboardingPage = memo(() => {
 
   return (
     <OnboardingContainer>
-      <Flexbox gap={24} style={{ height: '100%', maxWidth: 720, width: '100%' }}>
-        <ModeSwitch
-          actions={
-            isDev ? (
-              <Button danger loading={isResetting} size={'small'} onClick={handleReset}>
-                {t('agent.modeSwitch.reset')}
-              </Button>
-            ) : undefined
-          }
-        />
+      <Flexbox
+        gap={24}
+        style={{ height: '100%', maxWidth: 720, position: 'relative', width: '100%' }}
+      >
         <Flexbox flex={1} gap={16} style={{ minHeight: 0 }}>
           <OnboardingConversationProvider
             agentId={onboardingAgentId}
@@ -117,6 +111,15 @@ const AgentOnboardingPage = memo(() => {
             />
           </OnboardingConversationProvider>
         </Flexbox>
+        <ModeSwitch
+          actions={
+            isDev ? (
+              <Button danger loading={isResetting} size={'small'} onClick={handleReset}>
+                {t('agent.modeSwitch.reset')}
+              </Button>
+            ) : undefined
+          }
+        />
       </Flexbox>
     </OnboardingContainer>
   );
