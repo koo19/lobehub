@@ -1,6 +1,10 @@
 import { lambdaClient } from '@/libs/trpc/client';
 
 class AgentBotProviderService {
+  listPlatforms = async () => {
+    return lambdaClient.agentBotProvider.listPlatforms.query();
+  };
+
   getByAgentId = async (agentId: string) => {
     return lambdaClient.agentBotProvider.getByAgentId.query({ agentId });
   };
@@ -11,6 +15,7 @@ class AgentBotProviderService {
     credentials: Record<string, string>;
     enabled?: boolean;
     platform: string;
+    settings?: Record<string, unknown>;
   }) => {
     return lambdaClient.agentBotProvider.create.mutate(params);
   };
@@ -22,6 +27,7 @@ class AgentBotProviderService {
       credentials?: Record<string, string>;
       enabled?: boolean;
       platform?: string;
+      settings?: Record<string, unknown>;
     },
   ) => {
     return lambdaClient.agentBotProvider.update.mutate({ id, ...params });
@@ -33,6 +39,18 @@ class AgentBotProviderService {
 
   connectBot = async (params: { applicationId: string; platform: string }) => {
     return lambdaClient.agentBotProvider.connectBot.mutate(params);
+  };
+
+  testConnection = async (params: { applicationId: string; platform: string }) => {
+    return lambdaClient.agentBotProvider.testConnection.mutate(params);
+  };
+
+  wechatGetQrCode = async () => {
+    return lambdaClient.agentBotProvider.wechatGetQrCode.mutate();
+  };
+
+  wechatPollQrStatus = async (qrcode: string) => {
+    return lambdaClient.agentBotProvider.wechatPollQrStatus.query({ qrcode });
   };
 }
 

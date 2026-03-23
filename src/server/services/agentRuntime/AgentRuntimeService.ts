@@ -21,6 +21,7 @@ import { LocalQueueServiceImpl } from '@/server/services/queue/impls';
 import { ToolExecutionService } from '@/server/services/toolExecution';
 import { BuiltinToolsExecutor } from '@/server/services/toolExecution/builtin';
 
+import { hookDispatcher } from './hooks';
 import {
   type AgentExecutionParams,
   type AgentExecutionResult,
@@ -267,6 +268,7 @@ export class AgentRuntimeService {
       appContext,
       toolSet,
       stepCallbacks,
+      hooks,
       userInterventionConfig,
       completionWebhook,
       stepWebhook,
@@ -353,6 +355,26 @@ export class AgentRuntimeService {
       // Register step lifecycle callbacks
       if (stepCallbacks) {
         this.registerStepCallbacks(operationId, stepCallbacks);
+      }
+
+      // Register external hooks
+      if (hooks && hooks.length > 0) {
+        hookDispatcher.register(operationId, hooks);
+
+        // Persist webhook configs to state metadata for production mode
+        const serializedHooks = hookDispatcher.getSerializedHooks(operationId);
+        if (serializedHooks && serializedHooks.length > 0) {
+          const currentState = await this.coordinator.loadAgentState(operationId);
+          if (currentState) {
+            await this.coordinator.saveAgentState(operationId, {
+              ...currentState,
+              metadata: {
+                ...currentState.metadata,
+                _hooks: serializedHooks,
+              },
+            });
+          }
+        }
       }
 
       let messageId: string | undefined;
@@ -481,7 +503,7 @@ export class AgentRuntimeService {
         };
       }
 
-      // Call onBeforeStep callback
+      // Call onBeforeStep callback (legacy)
       if (callbacks?.onBeforeStep) {
         try {
           await callbacks.onBeforeStep({
@@ -493,6 +515,26 @@ export class AgentRuntimeService {
         } catch (callbackError) {
           log('[%s] onBeforeStep callback error: %O', operationId, callbackError);
         }
+      }
+
+      // Dispatch beforeStep hooks
+      try {
+        const beforeStepMetadata = agentState?.metadata || {};
+        await hookDispatcher.dispatch(
+          operationId,
+          'beforeStep',
+          {
+            agentId: beforeStepMetadata?.agentId || '',
+            finalState: agentState,
+            operationId,
+            stepIndex,
+            steps: agentState?.stepCount || 0,
+            userId: beforeStepMetadata?.userId || this.userId,
+          },
+          beforeStepMetadata._hooks,
+        );
+      } catch (hookError) {
+        log('[%s] beforeStep hook dispatch error: %O', operationId, hookError);
       }
 
       // Create Agent and Runtime instances
@@ -735,7 +777,7 @@ export class AgentRuntimeService {
         totalTokens: totalTokensNum,
       };
 
-      // Call onAfterStep callback with presentation data
+      // Call onAfterStep callback with presentation data (legacy)
       if (callbacks?.onAfterStep) {
         try {
           await callbacks.onAfterStep({
@@ -749,6 +791,28 @@ export class AgentRuntimeService {
         } catch (callbackError) {
           log('[%s] onAfterStep callback error: %O', operationId, callbackError);
         }
+      }
+
+      // Dispatch afterStep hooks
+      try {
+        const metadata = stepResult.newState?.metadata || {};
+        await hookDispatcher.dispatch(
+          operationId,
+          'afterStep',
+          {
+            agentId: metadata?.agentId || '',
+            finalState: stepResult.newState,
+            operationId,
+            shouldContinue,
+            status: stepResult.newState?.status,
+            stepIndex,
+            steps: stepResult.newState?.stepCount || 0,
+            userId: metadata?.userId || this.userId,
+          },
+          metadata._hooks,
+        );
+      } catch (hookError) {
+        log('[%s] afterStep hook dispatch error: %O', operationId, hookError);
       }
 
       // Record step snapshot via injected snapshot store
@@ -909,7 +973,10 @@ export class AgentRuntimeService {
         // Trigger completion webhook (fire-and-forget)
         await this.triggerCompletionWebhook(stepResult.newState, operationId, reason);
 
-        // Call onComplete callback
+        // Dispatch onComplete hooks
+        await this.dispatchCompletionHooks(operationId, stepResult.newState, reason);
+
+        // Call onComplete callback (legacy)
         if (callbacks?.onComplete) {
           try {
             await callbacks.onComplete({
@@ -973,6 +1040,7 @@ export class AgentRuntimeService {
       };
     } catch (error) {
       log('Step %d failed for operation %s: %O', stepIndex, operationId, error);
+      const formattedError = formatErrorForState(error);
 
       // Build error state — try loading current state from coordinator, but if that
       // also fails (e.g. Redis ECONNRESET), fall back to a minimal error state so
@@ -981,7 +1049,8 @@ export class AgentRuntimeService {
       try {
         await this.streamManager.publishStreamEvent(operationId, {
           data: {
-            error: (error as Error).message,
+            error: formattedError.message,
+            errorType: String(formattedError.type),
             phase: 'step_execution',
             stepIndex,
           },
@@ -1000,15 +1069,17 @@ export class AgentRuntimeService {
         const errorState = await this.coordinator.loadAgentState(operationId);
         finalStateWithError = {
           ...errorState!,
-          error: formatErrorForState(error),
+          error: formattedError,
           status: 'error' as const,
+          stepCount: errorState?.stepCount ?? stepIndex,
         };
       } catch (loadError) {
         log('[%s] Failed to load error state (infra may be down): %O', operationId, loadError);
         // Fallback: construct a minimal error state so callbacks still receive useful info
         finalStateWithError = {
-          error: formatErrorForState(error),
+          error: formattedError,
           status: 'error' as const,
+          stepCount: stepIndex,
         };
       }
 
@@ -1025,7 +1096,10 @@ export class AgentRuntimeService {
         log('[%s] Failed to trigger completion webhook: %O', operationId, webhookError);
       }
 
-      // Also call onComplete callback when execution fails
+      // Dispatch onComplete + onError hooks
+      await this.dispatchCompletionHooks(operationId, finalStateWithError, 'error');
+
+      // Also call onComplete callback when execution fails (legacy)
       if (callbacks?.onComplete) {
         try {
           await callbacks.onComplete({
@@ -1536,6 +1610,65 @@ export class AgentRuntimeService {
       }
     } catch (error) {
       console.error('[%s] Webhook delivery failed (%s → %s):', operationId, delivery, url, error);
+    }
+  }
+
+  /**
+   * Dispatch onComplete (and onError) hooks via HookDispatcher.
+   * Fire-and-forget: errors are logged but never thrown.
+   */
+  private async dispatchCompletionHooks(
+    operationId: string,
+    state: any,
+    reason: string,
+  ): Promise<void> {
+    try {
+      const metadata = state?.metadata || {};
+
+      // Extract last assistant content (same as triggerCompletionWebhook)
+      const lastAssistantContent = state?.messages
+        ?.slice()
+        .reverse()
+        .find(
+          (m: { content?: string; role: string }) => m.role === 'assistant' && m.content,
+        )?.content;
+
+      const duration = state?.createdAt
+        ? Date.now() - new Date(state.createdAt).getTime()
+        : undefined;
+
+      const event = {
+        agentId: metadata?.agentId || '',
+        cost: state?.cost?.total,
+        duration,
+        errorDetail: state?.error,
+        errorMessage: this.extractErrorMessage?.(state?.error) || String(state?.error || ''),
+        // Full state available in local mode only (not serialized to webhooks)
+        finalState: state,
+        lastAssistantContent,
+        llmCalls: state?.usage?.llm?.apiCalls,
+        operationId,
+        reason,
+        status: state?.status || reason,
+        steps: state?.stepCount || 0,
+        toolCalls: state?.usage?.tools?.totalCalls,
+        topicId: metadata?.topicId,
+        totalTokens: state?.usage?.llm?.tokens?.total,
+        userId: metadata?.userId || this.userId,
+      };
+
+      // Dispatch onComplete hooks
+      await hookDispatcher.dispatch(operationId, 'onComplete', event, metadata._hooks);
+
+      // Also dispatch onError hooks if reason is error
+      if (reason === 'error') {
+        await hookDispatcher.dispatch(operationId, 'onError', event, metadata._hooks);
+      }
+
+      // Cleanup hooks after completion
+      hookDispatcher.unregister(operationId);
+    } catch (error) {
+      log('[%s] Hook dispatch error (non-fatal): %O', operationId, error);
     }
   }
 

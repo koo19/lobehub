@@ -5,10 +5,12 @@ import { createStaticStyles } from 'antd-style';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import type { SerializedPlatformDefinition } from '@/server/services/bot/platforms/types';
 import { useAgentStore } from '@/store/agent';
 
-import { type ChannelProvider } from '../const';
 import Body from './Body';
+import Footer from './Footer';
+import Header from './Header';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
   main: css`
@@ -19,6 +21,8 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     flex: 1;
     flex-direction: column;
     align-items: center;
+
+    padding: 24px;
 
     background: ${cssVar.colorBgContainer};
   `,
@@ -33,59 +37,58 @@ interface CurrentConfig {
 }
 
 export interface ChannelFormValues {
-  applicationId: string;
-  appSecret?: string;
-  botToken: string;
-  encryptKey?: string;
-  publicKey: string;
-  secretToken?: string;
-  verificationToken?: string;
-  webhookProxyUrl?: string;
+  applicationId?: string;
+  credentials: Record<string, string>;
+  settings: Record<string, unknown>;
 }
 
 export interface TestResult {
   errorDetail?: string;
-  type: 'success' | 'error';
+  type: 'error' | 'success';
 }
 
 interface PlatformDetailProps {
   agentId: string;
   currentConfig?: CurrentConfig;
-  provider: ChannelProvider;
+  platformDef: SerializedPlatformDefinition;
 }
 
-const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentConfig }) => {
+const PlatformDetail = memo<PlatformDetailProps>(({ platformDef, agentId, currentConfig }) => {
   const { t } = useTranslation('agent');
   const { message: msg, modal } = App.useApp();
   const [form] = Form.useForm<ChannelFormValues>();
 
-  const [createBotProvider, deleteBotProvider, updateBotProvider, connectBot] = useAgentStore(
-    (s) => [s.createBotProvider, s.deleteBotProvider, s.updateBotProvider, s.connectBot],
-  );
+  const [createBotProvider, deleteBotProvider, updateBotProvider, connectBot, testConnection] =
+    useAgentStore((s) => [
+      s.createBotProvider,
+      s.deleteBotProvider,
+      s.updateBotProvider,
+      s.connectBot,
+      s.testConnection,
+    ]);
 
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [saveResult, setSaveResult] = useState<TestResult>();
+  const [connectResult, setConnectResult] = useState<TestResult>();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult>();
 
-  // Reset form when switching platforms
+  // Reset form and status when switching platforms
   useEffect(() => {
     form.resetFields();
-  }, [provider.id, form]);
+    setSaveResult(undefined);
+    setConnectResult(undefined);
+    setTestResult(undefined);
+  }, [platformDef.id, form]);
 
   // Sync form with saved config
   useEffect(() => {
     if (currentConfig) {
       form.setFieldsValue({
         applicationId: currentConfig.applicationId || '',
-        appSecret: currentConfig.credentials?.appSecret || '',
-        botToken: currentConfig.credentials?.botToken || '',
-        encryptKey: currentConfig.credentials?.encryptKey || '',
-        publicKey: currentConfig.credentials?.publicKey || '',
-        secretToken: currentConfig.credentials?.secretToken || '',
-        verificationToken: currentConfig.credentials?.verificationToken || '',
-        webhookProxyUrl: currentConfig.credentials?.webhookProxyUrl || '',
-      });
+        credentials: currentConfig.credentials || {},
+      } as any);
     }
   }, [currentConfig, form]);
 
@@ -95,78 +98,132 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
 
       setSaving(true);
       setSaveResult(undefined);
+      setConnectResult(undefined);
 
-      // Auto-derive applicationId from bot token for Telegram
-      let applicationId = values.applicationId;
-      if (provider.autoAppId && values.botToken) {
-        const colonIdx = values.botToken.indexOf(':');
-        if (colonIdx !== -1) {
-          applicationId = values.botToken.slice(0, colonIdx);
-          form.setFieldValue('applicationId', applicationId);
-        }
-      }
+      const {
+        applicationId: formAppId,
+        credentials: rawCredentials = {},
+        settings = {},
+      } = values as ChannelFormValues;
 
-      // Build platform-specific credentials
-      const credentials: Record<string, string> =
-        provider.authMode === 'app-secret'
-          ? { appId: applicationId, appSecret: values.appSecret || '' }
-          : { botToken: values.botToken };
+      // Strip undefined values from credentials (optional fields left empty by antd form)
+      const credentials = Object.fromEntries(
+        Object.entries(rawCredentials).filter(([, v]) => v !== undefined && v !== ''),
+      );
 
-      if (provider.fieldTags.publicKey) {
-        credentials.publicKey = values.publicKey || 'default';
-      }
-      if (provider.fieldTags.secretToken && values.secretToken) {
-        credentials.secretToken = values.secretToken;
-      }
-      if (provider.fieldTags.verificationToken && values.verificationToken) {
-        credentials.verificationToken = values.verificationToken;
-      }
-      if (provider.fieldTags.encryptKey && values.encryptKey) {
-        credentials.encryptKey = values.encryptKey;
-      }
-      if (provider.webhookMode === 'auto' && values.webhookProxyUrl) {
-        credentials.webhookProxyUrl = values.webhookProxyUrl;
+      // Use explicit applicationId from form; fall back to deriving from botToken (Telegram)
+      let applicationId = formAppId || '';
+      if (!applicationId && (credentials as Record<string, string>).botToken) {
+        const colonIdx = (credentials as Record<string, string>).botToken.indexOf(':');
+        if (colonIdx !== -1)
+          applicationId = (credentials as Record<string, string>).botToken.slice(0, colonIdx);
       }
 
       if (currentConfig) {
         await updateBotProvider(currentConfig.id, agentId, {
           applicationId,
           credentials,
+          settings,
         });
       } else {
         await createBotProvider({
           agentId,
           applicationId,
           credentials,
-          platform: provider.id,
+          platform: platformDef.id,
+          settings,
         });
       }
 
       setSaveResult({ type: 'success' });
+      setSaving(false);
+
+      // Auto-connect bot after save
+      setConnecting(true);
+      try {
+        await connectBot({ applicationId, platform: platformDef.id });
+        setConnectResult({ type: 'success' });
+      } catch (e: any) {
+        setConnectResult({ errorDetail: e?.message || String(e), type: 'error' });
+      } finally {
+        setConnecting(false);
+      }
     } catch (e: any) {
       if (e?.errorFields) return;
       console.error(e);
       setSaveResult({ errorDetail: e?.message || String(e), type: 'error' });
-    } finally {
       setSaving(false);
     }
-  }, [
-    agentId,
-    provider.id,
-    provider.autoAppId,
-    provider.authMode,
-    provider.fieldTags,
-    provider.webhookMode,
-    form,
-    currentConfig,
-    createBotProvider,
-    updateBotProvider,
-  ]);
+  }, [agentId, platformDef, form, currentConfig, createBotProvider, updateBotProvider, connectBot]);
+
+  const handleQrAuthenticated = useCallback(
+    async (creds: { botId: string; botToken: string; userId: string }) => {
+      setSaving(true);
+      setSaveResult(undefined);
+      setConnectResult(undefined);
+
+      try {
+        const credentials = {
+          botId: creds.botId,
+          botToken: creds.botToken,
+          userId: creds.userId,
+        };
+        const applicationId = creds.botId || creds.botToken.slice(0, 16);
+        const settings = form.getFieldValue('settings') || {};
+
+        if (currentConfig) {
+          await updateBotProvider(currentConfig.id, agentId, {
+            applicationId,
+            credentials,
+            settings,
+          });
+        } else {
+          await createBotProvider({
+            agentId,
+            applicationId,
+            credentials,
+            platform: platformDef.id,
+            settings,
+          });
+        }
+
+        setSaveResult({ type: 'success' });
+        msg.success(t('channel.saved'));
+
+        // Auto-connect
+        setConnecting(true);
+        try {
+          await connectBot({ applicationId, platform: platformDef.id });
+          setConnectResult({ type: 'success' });
+        } catch (e: any) {
+          setConnectResult({ errorDetail: e?.message || String(e), type: 'error' });
+        } finally {
+          setConnecting(false);
+        }
+      } catch (e: any) {
+        setSaveResult({ errorDetail: e?.message || String(e), type: 'error' });
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      agentId,
+      platformDef,
+      form,
+      currentConfig,
+      createBotProvider,
+      updateBotProvider,
+      connectBot,
+      msg,
+      t,
+    ],
+  );
 
   const handleDelete = useCallback(async () => {
     if (!currentConfig) return;
 
     modal.confirm({
+      content: t('channel.deleteConfirmDesc'),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -186,11 +243,17 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
       if (!currentConfig) return;
       try {
         await updateBotProvider(currentConfig.id, agentId, { enabled });
+        if (enabled) {
+          await connectBot({
+            applicationId: currentConfig.applicationId,
+            platform: currentConfig.platform,
+          });
+        }
       } catch {
         msg.error(t('channel.updateFailed'));
       }
     },
-    [currentConfig, agentId, updateBotProvider, msg, t],
+    [currentConfig, agentId, updateBotProvider, connectBot, msg, t],
   );
 
   const handleTestConnection = useCallback(async () => {
@@ -202,9 +265,9 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
     setTesting(true);
     setTestResult(undefined);
     try {
-      await connectBot({
+      await testConnection({
         applicationId: currentConfig.applicationId,
-        platform: provider.id,
+        platform: platformDef.id,
       });
       setTestResult({ type: 'success' });
     } catch (e: any) {
@@ -215,15 +278,26 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
     } finally {
       setTesting(false);
     }
-  }, [currentConfig, provider.id, connectBot, msg, t]);
+  }, [currentConfig, platformDef.id, testConnection, msg, t]);
 
   return (
     <main className={styles.main}>
-      <Body
+      <Header
         currentConfig={currentConfig}
+        platformDef={platformDef}
+        onToggleEnable={handleToggleEnable}
+      />
+      <Body
+        form={form}
+        platformDef={platformDef}
+        onQrAuthenticated={platformDef.authFlow === 'qrcode' ? handleQrAuthenticated : undefined}
+      />
+      <Footer
+        connectResult={connectResult}
+        connecting={connecting}
         form={form}
         hasConfig={!!currentConfig}
-        provider={provider}
+        platformDef={platformDef}
         saveResult={saveResult}
         saving={saving}
         testResult={testResult}
@@ -232,7 +306,6 @@ const PlatformDetail = memo<PlatformDetailProps>(({ provider, agentId, currentCo
         onDelete={handleDelete}
         onSave={handleSave}
         onTestConnection={handleTestConnection}
-        onToggleEnable={handleToggleEnable}
       />
     </main>
   );

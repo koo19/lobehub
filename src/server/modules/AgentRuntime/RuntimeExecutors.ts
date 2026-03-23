@@ -45,6 +45,51 @@ const TOOL_PRICING: Record<string, number> = {
   'lobe-web-browsing/search': 0,
 };
 
+const formatErrorEventData = (error: unknown, phase: string) => {
+  let errorMessage = 'Unknown error';
+  let errorType: string | undefined;
+
+  if (error && typeof error === 'object') {
+    const payload = error as { error?: unknown; errorType?: unknown; message?: unknown };
+
+    if (typeof payload.errorType === 'string') {
+      errorType = payload.errorType;
+    }
+
+    if (typeof payload.message === 'string' && payload.message.length > 0) {
+      errorMessage = payload.message;
+    } else if (typeof payload.error === 'string' && payload.error.length > 0) {
+      errorMessage = payload.error;
+    } else if (
+      payload.error &&
+      typeof payload.error === 'object' &&
+      'message' in payload.error &&
+      typeof payload.error.message === 'string'
+    ) {
+      errorMessage = payload.error.message;
+    } else if (error instanceof Error && error.message.length > 0) {
+      errorMessage = error.message;
+    } else if (errorType) {
+      errorMessage = errorType;
+    }
+  } else if (error instanceof Error && error.message.length > 0) {
+    errorMessage = error.message;
+    errorType = error.name;
+  } else if (typeof error === 'string' && error.length > 0) {
+    errorMessage = error;
+  }
+
+  if (!errorType && error instanceof Error && error.name) {
+    errorType = error.name;
+  }
+
+  return {
+    error: errorMessage,
+    errorType,
+    phase,
+  };
+};
+
 export interface RuntimeExecutorContext {
   agentConfig?: any;
   discordContext?: any;
@@ -298,6 +343,7 @@ export const createRuntimeExecutors = (
 
       // Construct ChatStreamPayload
       const stream = ctx.stream ?? true;
+
       const chatPayload = { messages: processedMessages, model, stream, tools };
 
       log(
@@ -623,10 +669,7 @@ export const createRuntimeExecutors = (
     } catch (error) {
       // Publish error event
       await streamManager.publishStreamEvent(operationId, {
-        data: {
-          error: (error as Error).message,
-          phase: 'llm_execution',
-        },
+        data: formatErrorEventData(error, 'llm_execution'),
         stepIndex,
         type: 'error',
       });
@@ -1082,10 +1125,7 @@ export const createRuntimeExecutors = (
     } catch (error) {
       // Publish tool execution error event
       await streamManager.publishStreamEvent(operationId, {
-        data: {
-          error: (error as Error).message,
-          phase: 'tool_execution',
-        },
+        data: formatErrorEventData(error, 'tool_execution'),
         stepIndex,
         type: 'error',
       });
@@ -1226,10 +1266,7 @@ export const createRuntimeExecutors = (
 
           // Publish error event
           await streamManager.publishStreamEvent(operationId, {
-            data: {
-              error: (error as Error).message,
-              phase: 'tool_execution',
-            },
+            data: formatErrorEventData(error, 'tool_execution'),
             stepIndex,
             type: 'error',
           });
