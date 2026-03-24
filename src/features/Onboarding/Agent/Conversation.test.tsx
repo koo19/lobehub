@@ -1,26 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import AgentOnboardingConversation from './Conversation';
 
 const chatInputSpy = vi.fn();
-
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { currentStep?: number; totalSteps?: number }) => {
-      if (key === 'agent.progress') return `${options?.currentStep}/${options?.totalSteps}`;
-
-      return (
-        {
-          'agent.banner.label': 'Agent Onboarding',
-          'agent.stage.responseLanguage': 'Response Language',
-          'agent.subtitle': 'Complete setup in a dedicated onboarding conversation.',
-          'agent.title': 'Conversation Onboarding',
-        }[key] || key
-      );
-    },
-  }),
-}));
 
 vi.mock('@/utils/env', () => ({ isDev: false }));
 
@@ -30,22 +13,47 @@ vi.mock('@/features/Conversation', () => ({
 
     return <div data-testid="chat-input" />;
   },
-  ChatList: () => <div data-testid="chat-list" />,
+  ChatList: ({ welcome }: { welcome?: any }) => <div data-testid="chat-list">{welcome}</div>,
 }));
 
-vi.mock('./StructuredActions', () => ({
-  default: ({ currentNode }: { currentNode?: string }) => (
-    <div data-testid="structured-actions">{currentNode}</div>
+vi.mock('./InteractionHintRenderer', () => ({
+  default: ({
+    interactionHints,
+    onDismissNode,
+  }: {
+    interactionHints?: Array<{ id: string; node?: string }>;
+    onDismissNode?: (node: string) => void;
+  }) => (
+    <div data-testid="structured-actions">
+      <div>{interactionHints?.map((hint) => hint.id).join(',')}</div>
+      <div>{interactionHints?.[0]?.node}</div>
+      {interactionHints?.[0] && (
+        <button onClick={() => onDismissNode?.(interactionHints[0].node!)}>dismiss</button>
+      )}
+    </div>
   ),
 }));
 
-describe('AgentOnboardingConversation', () => {
-  it('renders onboarding banner and disables expand + runtime config in chat input', () => {
-    render(<AgentOnboardingConversation currentNode="responseLanguage" />);
+vi.mock('./Welcome', () => ({
+  default: () => <div data-testid="onboarding-welcome" />,
+}));
 
-    expect(screen.getByText('Agent Onboarding')).toBeInTheDocument();
-    expect(screen.getByText('Response Language')).toBeInTheDocument();
-    expect(screen.getByText('6/8')).toBeInTheDocument();
+describe('AgentOnboardingConversation', () => {
+  it('renders structured actions and disables expand + runtime config in chat input', () => {
+    render(
+      <AgentOnboardingConversation
+        interactionHints={[
+          {
+            id: 'response-language-select',
+            kind: 'select',
+            node: 'responseLanguage',
+          } as any,
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId('chat-list')).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-welcome')).toBeInTheDocument();
     expect(screen.getByTestId('structured-actions')).toHaveTextContent('responseLanguage');
     expect(chatInputSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -54,5 +62,32 @@ describe('AgentOnboardingConversation', () => {
         showRuntimeConfig: false,
       }),
     );
+  });
+
+  it('hides the current interaction hint after it is dismissed locally', () => {
+    render(
+      <AgentOnboardingConversation
+        interactionHints={[
+          {
+            id: 'agent-identity-form',
+            kind: 'form',
+            node: 'agentIdentity',
+          } as any,
+          {
+            id: 'agent-identity-presets',
+            kind: 'button_group',
+            node: 'agentIdentity',
+          } as any,
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId('structured-actions')).toHaveTextContent(
+      'agent-identity-form,agent-identity-presets',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'dismiss' }));
+
+    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
   });
 });

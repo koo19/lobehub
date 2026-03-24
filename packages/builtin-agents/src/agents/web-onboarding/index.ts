@@ -4,7 +4,7 @@ import { DEFAULT_MODEL } from '@lobechat/const';
 
 import type { BuiltinAgentDefinition } from '../../types';
 import { BUILTIN_AGENT_SLUGS } from '../../types';
-import { systemRoleTemplate } from './systemRole';
+import { createSystemRole } from './systemRole';
 
 export const WEB_ONBOARDING: BuiltinAgentDefinition = {
   avatar: '/avatars/lobe-ai.png',
@@ -27,7 +27,7 @@ export const WEB_ONBOARDING: BuiltinAgentDefinition = {
       skillActivateMode: 'manual',
     },
     plugins: [WebOnboardingIdentifier, ...(ctx.plugins || [])],
-    systemRole: systemRoleTemplate,
+    systemRole: createSystemRole(ctx.userLocale),
   }),
   slug: BUILTIN_AGENT_SLUGS.webOnboarding,
 };

@@ -7,6 +7,8 @@ import { BaseExecutor } from '@lobechat/types';
 
 import { userService } from '@/services/user';
 
+import { createWebOnboardingToolResult } from '../../../../../utils/webOnboardingToolResult';
+
 class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   readonly identifier = WebOnboardingIdentifier;
   protected readonly apiEnum = WebOnboardingApiName;
@@ -23,12 +25,23 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
 
   proposeOnboardingPatch = async (
     params: {
-      node: Parameters<typeof userService.proposeAgentOnboardingPatch>[0]['node'];
-      patch: Parameters<typeof userService.proposeAgentOnboardingPatch>[0]['patch'];
+      updates: Parameters<typeof userService.proposeAgentOnboardingPatch>[0]['updates'];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
     const result = await userService.proposeAgentOnboardingPatch(params);
+
+    return createWebOnboardingToolResult(result);
+  };
+
+  proposeOnboardingInteractions = async (
+    params: {
+      hints: Parameters<typeof userService.proposeAgentOnboardingInteractions>[0]['hints'];
+      node: Parameters<typeof userService.proposeAgentOnboardingInteractions>[0]['node'];
+    },
+    _ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => {
+    const result = await userService.proposeAgentOnboardingInteractions(params);
 
     return {
       content: result.content,
@@ -45,11 +58,7 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   ): Promise<BuiltinToolResult> => {
     const result = await userService.commitAgentOnboardingNode(params.node);
 
-    return {
-      content: result.content,
-      state: result,
-      success: result.success,
-    };
+    return createWebOnboardingToolResult(result);
   };
 
   redirectOfftopic = async (
@@ -58,11 +67,7 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   ): Promise<BuiltinToolResult> => {
     const result = await userService.redirectAgentOnboardingOfftopic(params.reason);
 
-    return {
-      content: result.content,
-      state: result,
-      success: result.success,
-    };
+    return createWebOnboardingToolResult(result);
   };
 
   finishAgentOnboarding = async (
@@ -71,11 +76,7 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   ): Promise<BuiltinToolResult> => {
     const result = await userService.finishAgentOnboarding();
 
-    return {
-      content: result.content,
-      state: result,
-      success: result.success,
-    };
+    return createWebOnboardingToolResult(result);
   };
 }
 

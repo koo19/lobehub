@@ -14,6 +14,9 @@ describe('builtin executor registry', () => {
     expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.proposeOnboardingPatch)).toBe(
       true,
     );
+    expect(
+      hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.proposeOnboardingInteractions),
+    ).toBe(true);
     expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.commitOnboardingNode)).toBe(
       true,
     );

@@ -15,6 +15,8 @@ export default {
   'agent.stage.workStyle': 'Work Style',
   'agent.subtitle': 'Complete setup in a dedicated onboarding conversation.',
   'agent.summaryHint': 'Finish here if the setup summary looks right.',
+  'agent.welcome':
+    "I just came online. Let's shape how we work together. Start by giving me a name, a vibe, and an emoji that fits.",
   'agent.telemetryAllow': 'Allow telemetry',
   'agent.telemetryDecline': 'No thanks',
   'agent.telemetryHint': 'You can also answer in your own words.',

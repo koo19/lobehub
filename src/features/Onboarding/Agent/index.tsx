@@ -1,7 +1,7 @@
 'use client';
 
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
-import { Button, Flexbox, Text } from '@lobehub/ui';
+import { Button, ErrorBoundary, Flexbox, Text } from '@lobehub/ui';
 import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -89,6 +89,14 @@ const AgentOnboardingPage = memo(() => {
     }
   };
 
+  const handleSubmitInteractionUpdates = async (
+    updates: Parameters<typeof userService.proposeAgentOnboardingPatch>[0]['updates'],
+  ) => {
+    await userService.proposeAgentOnboardingPatch({ updates });
+    await syncOnboardingContext();
+    await refreshUserState();
+  };
+
   return (
     <OnboardingContainer>
       <Flexbox
@@ -106,9 +114,12 @@ const AgentOnboardingPage = memo(() => {
               },
             }}
           >
-            <AgentOnboardingConversation
-              currentNode={currentContext.currentNode || data.agentOnboarding.currentNode}
-            />
+            <ErrorBoundary FallbackComponent={() => null}>
+              <AgentOnboardingConversation
+                interactionHints={currentContext.interactionHints}
+                onSubmitInteractionUpdates={handleSubmitInteractionUpdates}
+              />
+            </ErrorBoundary>
           </OnboardingConversationProvider>
         </Flexbox>
         <ModeSwitch

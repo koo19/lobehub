@@ -6,9 +6,10 @@ import {
 } from '@lobechat/types';
 import {
   Plans,
-  UserAgentOnboardingDraftSchema,
+  UserAgentOnboardingInteractionHintDraftSchema,
   UserAgentOnboardingNodeSchema,
   UserAgentOnboardingSchema,
+  UserAgentOnboardingUpdateSchema,
   UserGuideSchema,
   UserOnboardingSchema,
   UserPreferenceSchema,
@@ -209,14 +210,26 @@ export const userRouter = router({
   proposeAgentOnboardingPatch: userProcedure
     .input(
       z.object({
-        node: UserAgentOnboardingNodeSchema,
-        patch: UserAgentOnboardingDraftSchema,
+        updates: z.array(UserAgentOnboardingUpdateSchema).min(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
       return onboardingService.proposePatch(input);
+    }),
+
+  proposeAgentOnboardingInteractions: userProcedure
+    .input(
+      z.object({
+        hints: z.array(UserAgentOnboardingInteractionHintDraftSchema),
+        node: UserAgentOnboardingNodeSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+      return onboardingService.proposeInteractions(input);
     }),
 
   commitAgentOnboardingNode: userProcedure

@@ -4,6 +4,7 @@ import {
 } from '@lobechat/builtin-tool-web-onboarding';
 
 import { OnboardingService } from '@/server/services/onboarding';
+import { createWebOnboardingToolResult } from '@/utils/webOnboardingToolResult';
 
 import type { ServerRuntimeRegistration } from './types';
 
@@ -27,22 +28,27 @@ export const webOnboardingRuntime: ServerRuntimeRegistration = {
           case 'proposeOnboardingPatch': {
             const result = await service.proposePatch(args as any);
 
-            return { content: result.content, state: result, success: result.success };
+            return createWebOnboardingToolResult(result);
+          }
+          case 'proposeOnboardingInteractions': {
+            const result = await service.proposeInteractions(args as any);
+
+            return createWebOnboardingToolResult(result);
           }
           case 'commitOnboardingNode': {
             const result = await service.commitNode(args.node as any);
 
-            return { content: result.content, state: result, success: result.success };
+            return createWebOnboardingToolResult(result);
           }
           case 'redirectOfftopic': {
             const result = await service.redirectOfftopic(args.reason as string | undefined);
 
-            return { content: result.content, state: result, success: result.success };
+            return createWebOnboardingToolResult(result);
           }
           case 'finishAgentOnboarding': {
             const result = await service.finish();
 
-            return { content: result.content, state: result, success: result.success };
+            return createWebOnboardingToolResult(result);
           }
           default: {
             throw new Error(`Unsupported web onboarding api: ${api.name}`);

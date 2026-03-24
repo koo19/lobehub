@@ -1,6 +1,6 @@
 import type { BuiltinAgentDefinition } from '../../types';
 import { BUILTIN_AGENT_SLUGS } from '../../types';
-import { systemRole } from './systemRole';
+import { createSystemRole } from './systemRole';
 
 /**
  * Inbox Agent - the default assistant agent for general conversations
@@ -11,7 +11,7 @@ export const INBOX: BuiltinAgentDefinition = {
   avatar: '/avatars/lobe-ai.png',
   runtime: (ctx) => ({
     plugins: ctx.plugins || [],
-    systemRole,
+    systemRole: createSystemRole(ctx.userLocale),
   }),
 
   slug: BUILTIN_AGENT_SLUGS.inbox,

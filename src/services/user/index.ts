@@ -5,7 +5,10 @@ import {
   type SSOProvider,
   type UserAgentOnboarding,
   type UserAgentOnboardingDraft,
+  type UserAgentOnboardingInteractionHint,
+  type UserAgentOnboardingInteractionHintDraft,
   type UserAgentOnboardingNode,
+  type UserAgentOnboardingUpdate,
   type UserGuide,
   type UserInitializationState,
   type UserOnboarding,
@@ -33,6 +36,20 @@ export class UserService {
   getOrCreateAgentOnboardingContext = async (): Promise<{
     agentId: string;
     agentOnboarding: UserAgentOnboarding;
+    context: {
+      activeNode?: UserAgentOnboardingNode;
+      committed: Record<string, unknown>;
+      completedNodes: UserAgentOnboardingNode[];
+      draft: UserAgentOnboardingDraft;
+      finishedAt?: string;
+      interactionHints: UserAgentOnboardingInteractionHint[];
+      interactionPolicy: {
+        needsRefresh: boolean;
+        reason?: string;
+      };
+      topicId?: string;
+      version: number;
+    };
     topicId: string;
   }> => {
     return lambdaClient.user.getOrCreateAgentOnboardingContext.query();
@@ -42,11 +59,17 @@ export class UserService {
     return lambdaClient.user.getAgentOnboardingContext.query();
   };
 
-  proposeAgentOnboardingPatch = async (params: {
+  proposeAgentOnboardingPatch = async (params: { updates: UserAgentOnboardingUpdate[] }) => {
+    return lambdaClient.user.proposeAgentOnboardingPatch.mutate(
+      params as Parameters<typeof lambdaClient.user.proposeAgentOnboardingPatch.mutate>[0],
+    );
+  };
+
+  proposeAgentOnboardingInteractions = async (params: {
+    hints: UserAgentOnboardingInteractionHintDraft[];
     node: UserAgentOnboardingNode;
-    patch: UserAgentOnboardingDraft;
   }) => {
-    return lambdaClient.user.proposeAgentOnboardingPatch.mutate(params);
+    return lambdaClient.user.proposeAgentOnboardingInteractions.mutate(params);
   };
 
   commitAgentOnboardingNode = async (node: UserAgentOnboardingNode) => {
