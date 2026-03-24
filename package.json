@@ -199,6 +199,7 @@
     "@langchain/community": "^0.3.59",
     "@lexical/utils": "^0.39.0",
     "@lobechat/agent-runtime": "workspace:*",
+    "@lobechat/builtin-agent-onboarding": "workspace:*",
     "@lobechat/builtin-agents": "workspace:*",
     "@lobechat/builtin-skills": "workspace:*",
     "@lobechat/builtin-tool-agent-builder": "workspace:*",

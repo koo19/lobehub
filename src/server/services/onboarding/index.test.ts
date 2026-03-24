@@ -105,16 +105,14 @@ describe('OnboardingService', () => {
     vi.mocked(AgentService).mockImplementation(() => mockAgentService as any);
   });
 
-  const issueReadToken = async (service: OnboardingService) => {
-    const context = await service.getState({ issueReadToken: true });
-
-    return context.control.readToken!;
-  };
-
-  it('resets legacy onboarding nodes to the new conversational flow', async () => {
+  it('resets legacy onboarding nodes to the conversational flow', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: ['telemetry', 'fullName'],
       currentNode: 'fullName',
+      executionGuard: {
+        issuedAt: '2026-03-24T00:00:00.000Z',
+        readToken: 'legacy-token',
+      },
       version: CURRENT_ONBOARDING_VERSION,
     };
 
@@ -126,7 +124,7 @@ describe('OnboardingService', () => {
     expect(context.committed.agentIdentity).toBeUndefined();
   });
 
-  it('issues control metadata and a read token for tool execution state reads', async () => {
+  it('returns lightweight control metadata without read tokens', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
@@ -134,43 +132,13 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const context = await service.getState({ issueReadToken: true });
+    const context = await service.getState();
 
-    expect(context.control.readTokenRequired).toBe(true);
-    expect(context.control.readToken).toBeTruthy();
     expect(context.control.allowedTools).toContain('getOnboardingState');
     expect(context.control.allowedTools).toContain('askUserQuestion');
     expect(context.control.allowedTools).toContain('saveAnswer');
-  });
-
-  it('rejects onboarding actions when the latest state read token is missing or stale', async () => {
-    persistedUserState.agentOnboarding = {
-      completedNodes: [],
-      draft: {},
-      version: CURRENT_ONBOARDING_VERSION,
-    };
-
-    const service = new OnboardingService(mockDb, userId);
-    const result = await service.saveAnswer({
-      readToken: 'stale-token',
-      updates: [
-        {
-          node: 'agentIdentity',
-          patch: {
-            emoji: '🦞',
-            name: 'Lobster',
-            nature: 'direct',
-            vibe: 'steady',
-          },
-        },
-      ],
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error?.code).toBe('STATE_READ_REQUIRED');
-    expect(result.instruction).toContain(
-      'Call getOnboardingState immediately before any other onboarding tool.',
-    );
+    expect('readToken' in context.control).toBe(false);
+    expect('readTokenRequired' in context.control).toBe(false);
   });
 
   it('commits agent identity and advances to user identity', async () => {
@@ -182,7 +150,6 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
-      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
@@ -199,6 +166,7 @@ describe('OnboardingService', () => {
     });
 
     expect(result.success).toBe(true);
+    expect(result.activeNode).toBe('userIdentity');
     expect(persistedUserState.agentOnboarding.agentIdentity).toEqual({
       emoji: '🫖',
       name: '小七',
@@ -208,26 +176,7 @@ describe('OnboardingService', () => {
     expect(persistedUserState.agentOnboarding.completedNodes).toEqual(['agentIdentity']);
   });
 
-  it('preserves node-scoped flat patch fields in the update schema', () => {
-    const parsed = UserAgentOnboardingUpdateSchema.parse({
-      node: 'agentIdentity',
-      patch: {
-        emoji: '🐍',
-        name: '小齐',
-        nature: 'Sharp, playful AI sidekick with insights',
-        vibe: 'Serpent-like: sharp, witty, and insightful',
-      },
-    });
-
-    expect(parsed.patch).toEqual({
-      emoji: '🐍',
-      name: '小齐',
-      nature: 'Sharp, playful AI sidekick with insights',
-      vibe: 'Serpent-like: sharp, witty, and insightful',
-    });
-  });
-
-  it('accepts flat agent identity payloads scoped by node', async () => {
+  it('stores partial drafts and reports missing required fields', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
@@ -236,40 +185,6 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
-      readToken: await issueReadToken(service),
-      updates: [
-        {
-          node: 'agentIdentity',
-          patch: {
-            emoji: '🐍',
-            name: '小齐',
-            nature: 'Sharp, playful AI sidekick with insights',
-            vibe: 'Serpent-like: sharp, witty, and insightful',
-          },
-        },
-      ],
-    });
-
-    expect(result.success).toBe(true);
-    expect(persistedUserState.agentOnboarding.agentIdentity).toEqual({
-      emoji: '🐍',
-      name: '小齐',
-      nature: 'Sharp, playful AI sidekick with insights',
-      vibe: 'Serpent-like: sharp, witty, and insightful',
-    });
-    expect(persistedUserState.agentOnboarding.completedNodes).toEqual(['agentIdentity']);
-  });
-
-  it('stores partial agent identity drafts without committing the node', async () => {
-    persistedUserState.agentOnboarding = {
-      completedNodes: [],
-      draft: {},
-      version: CURRENT_ONBOARDING_VERSION,
-    };
-
-    const service = new OnboardingService(mockDb, userId);
-    const result = await service.saveAnswer({
-      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
@@ -286,14 +201,13 @@ describe('OnboardingService', () => {
       missingFields: ['emoji', 'name', 'nature'],
       status: 'partial',
     });
-    expect(result.content).toContain('Saved a partial draft');
     expect(persistedUserState.agentOnboarding.draft.agentIdentity).toEqual({
       vibe: '活泼',
     });
     expect(persistedUserState.agentOnboarding.completedNodes).toEqual([]);
   });
 
-  it('preserves later-step drafts when the model calls userIdentity too early', async () => {
+  it('rejects writes to a non-active node and does not preserve later drafts', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
@@ -302,7 +216,6 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
-      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'userIdentity',
@@ -319,71 +232,14 @@ describe('OnboardingService', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.content).toContain('saved the later-step draft');
-    expect(result.content).toContain('Stay on agentIdentity');
+    expect(result.error?.code).toBe('NODE_MISMATCH');
     expect(result.activeNode).toBe('agentIdentity');
     expect(result.requestedNode).toBe('userIdentity');
-    expect(result.instruction).toContain('Do not call userIdentity yet');
-    expect(result.currentQuestion).toBeUndefined();
     expect(result.mismatch).toBe(true);
-    expect(result.savedDraftFields).toEqual(['userIdentity']);
-    expect(persistedUserState.agentOnboarding.draft.userIdentity).toEqual({
-      domainExpertise: 'AI application development',
-      name: 'Ada',
-      professionalRole: 'Engineer',
-      summary: 'Ada builds AI application features and infra.',
-    });
+    expect(persistedUserState.agentOnboarding.draft.userIdentity).toBeUndefined();
   });
 
-  it('does not derive a current question from onboarding state without a stored question surface', async () => {
-    persistedUserState.agentOnboarding = {
-      completedNodes: [],
-      currentNode: 'agentIdentity',
-      draft: {
-        responseLanguage: 'zh-CN',
-      },
-      version: CURRENT_ONBOARDING_VERSION,
-    };
-
-    const service = new OnboardingService(mockDb, userId);
-    const context = await service.getState();
-
-    expect(context.activeNode).toBe('agentIdentity');
-    expect(context.currentQuestion).toBeUndefined();
-  });
-
-  it('does not derive later questions from completed nodes without a stored question surface', async () => {
-    persistedUserState.agentOnboarding = {
-      completedNodes: ['agentIdentity', 'userIdentity', 'workStyle', 'workContext', 'painPoints'],
-      currentNode: 'agentIdentity',
-      draft: {
-        responseLanguage: 'zh-CN',
-      },
-      version: CURRENT_ONBOARDING_VERSION,
-    };
-
-    const service = new OnboardingService(mockDb, userId);
-    const context = await service.getState();
-
-    expect(context.activeNode).toBe('responseLanguage');
-    expect(context.currentQuestion).toBeUndefined();
-  });
-
-  it('returns no current question when the active node has no stored question surface', async () => {
-    persistedUserState.agentOnboarding = {
-      completedNodes: ['agentIdentity'],
-      draft: {},
-      version: CURRENT_ONBOARDING_VERSION,
-    };
-
-    const service = new OnboardingService(mockDb, userId);
-    const context = await service.getState();
-
-    expect(context.activeNode).toBe('userIdentity');
-    expect(context.currentQuestion).toBeUndefined();
-  });
-
-  it('supports batch updates across consecutive onboarding nodes', async () => {
+  it('supports sequential batch updates across consecutive nodes', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
@@ -392,28 +248,21 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
-      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
           patch: {
-            agentIdentity: {
-              emoji: '🦊',
-              name: '小七',
-              nature: 'a fox-like AI collaborator',
-              vibe: 'sharp and warm',
-            },
+            emoji: '🦊',
+            name: '小七',
+            nature: 'a fox-like AI collaborator',
+            vibe: 'sharp and warm',
           },
         },
         {
           node: 'userIdentity',
           patch: {
-            userIdentity: {
-              domainExpertise: 'AI application development',
-              name: 'Ada',
-              professionalRole: 'Engineer',
-              summary: 'Ada builds AI application features and infra.',
-            },
+            summary: 'Ada builds AI application features and infra.',
+            professionalRole: 'Engineer',
           },
         },
       ],
@@ -422,9 +271,10 @@ describe('OnboardingService', () => {
     expect(result.success).toBe(true);
     expect(result.processedNodes).toEqual(['agentIdentity', 'userIdentity']);
     expect(result.activeNode).toBe('workStyle');
-    expect(result.currentQuestion).toBeUndefined();
-    expect(persistedUserState.agentOnboarding.agentIdentity?.name).toBe('小七');
-    expect(persistedUserState.agentOnboarding.profile?.identity?.name).toBe('Ada');
+    expect(persistedUserState.agentOnboarding.profile?.identity).toEqual({
+      professionalRole: 'Engineer',
+      summary: 'Ada builds AI application features and infra.',
+    });
   });
 
   it('stores the current question for the active onboarding node', async () => {
@@ -453,7 +303,6 @@ describe('OnboardingService', () => {
         mode: 'button_group',
         prompt: 'AI-generated preset',
       },
-      readToken: await issueReadToken(service),
     });
 
     expect(result.success).toBe(true);
@@ -465,17 +314,9 @@ describe('OnboardingService', () => {
         node: 'agentIdentity',
       }),
     );
-    expect(persistedUserState.agentOnboarding.questionSurface).toEqual({
-      node: 'agentIdentity',
-      question: expect.objectContaining({
-        id: 'agent-identity-ai-preset',
-        node: 'agentIdentity',
-      }),
-      updatedAt: expect.any(String),
-    });
   });
 
-  it('clears the current question after the onboarding node advances', async () => {
+  it('clears the current question after the active node advances', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
@@ -494,17 +335,14 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     await service.saveAnswer({
-      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
           patch: {
-            agentIdentity: {
-              emoji: '🫖',
-              name: '小七',
-              nature: 'an odd little AI housemate',
-              vibe: 'warm and sharp',
-            },
+            emoji: '🫖',
+            name: '小七',
+            nature: 'an odd little AI housemate',
+            vibe: 'warm and sharp',
           },
         },
       ],
@@ -513,74 +351,36 @@ describe('OnboardingService', () => {
     const context = await service.getState();
 
     expect(context.activeNode).toBe('userIdentity');
-    expect(persistedUserState.agentOnboarding.questionSurface).toBeUndefined();
     expect(context.currentQuestion).toBeUndefined();
+    expect(persistedUserState.agentOnboarding.questionSurface).toBeUndefined();
   });
 
-  it('surfaces a committed profile across the new onboarding dimensions', async () => {
+  it('commits an already complete draft through completeCurrentStep', async () => {
     persistedUserState.agentOnboarding = {
-      agentIdentity: {
-        emoji: '🫖',
-        name: '小七',
-        nature: 'an odd little AI housemate',
-        vibe: 'warm and sharp',
-      },
-      completedNodes: ['agentIdentity', 'userIdentity', 'workStyle', 'workContext', 'painPoints'],
-      draft: {},
-      profile: {
-        currentFocus: 'shipping a 0-1 B2B data platform this quarter',
-        identity: {
-          domainExpertise: 'B2B SaaS',
-          name: 'Ada',
-          professionalRole: 'Product Manager',
-          summary: 'Ada is a B2B SaaS PM building a data platform from 0 to 1.',
-        },
-        interests: ['product strategy', 'data platforms'],
-        painPoints: {
-          blockedBy: ['cross-team alignment'],
-          frustrations: ['spec churn'],
-          noTimeFor: ['user research synthesis'],
-          summary:
-            'Execution gets dragged down by alignment overhead and constant requirement churn.',
-        },
-        workContext: {
-          activeProjects: ['data platform 0-1'],
-          currentFocus: 'define the MVP and prove adoption',
-          interests: ['product strategy', 'data platforms'],
-          summary:
-            'She is focused on MVP definition, adoption, and the operating rhythm around the launch.',
-          thisQuarter: 'launch the first usable version',
-          thisWeek: 'close scope and unblock engineering',
-          tools: ['Notion', 'Figma', 'SQL'],
-        },
+      completedNodes: ['agentIdentity', 'userIdentity'],
+      draft: {
         workStyle: {
-          communicationStyle: 'direct',
-          decisionMaking: 'data-informed but fast',
-          socialMode: 'collaborative',
-          summary: 'She likes clear trade-offs, quick synthesis, and direct communication.',
-          thinkingPreferences: 'structured',
-          workStyle: 'fast-moving',
+          summary: 'Prefers direct communication and quick synthesis.',
         },
       },
       version: CURRENT_ONBOARDING_VERSION,
     };
-    persistedUserState.fullName = 'Ada';
-    persistedUserState.interests = ['product strategy', 'data platforms'];
 
     const service = new OnboardingService(mockDb, userId);
-    const context = await service.getState();
-    const committedAgentIdentity = context.committed.agentIdentity as any;
-    const committedProfile = context.committed.profile as any;
+    const result = await service.completeCurrentStep('workStyle');
 
-    expect(committedAgentIdentity?.name).toBe('小七');
-    expect(context.currentQuestion).toBeUndefined();
-    expect(committedProfile?.identity?.professionalRole).toBe('Product Manager');
-    expect(committedProfile?.workStyle?.decisionMaking).toBe('data-informed but fast');
-    expect(committedProfile?.workContext?.tools).toEqual(['Notion', 'Figma', 'SQL']);
-    expect(committedProfile?.painPoints?.blockedBy).toEqual(['cross-team alignment']);
+    expect(result.success).toBe(true);
+    expect(persistedUserState.agentOnboarding.completedNodes).toEqual([
+      'agentIdentity',
+      'userIdentity',
+      'workStyle',
+    ]);
+    expect(persistedUserState.agentOnboarding.profile?.workStyle).toEqual({
+      summary: 'Prefers direct communication and quick synthesis.',
+    });
   });
 
-  it('allows finish when summary is the derived active step even if legacy currentNode is stale', async () => {
+  it('rejects saveAnswer on summary and only finishes from summary', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [
         'agentIdentity',
@@ -591,17 +391,45 @@ describe('OnboardingService', () => {
         'responseLanguage',
         'proSettings',
       ],
-      currentNode: 'agentIdentity',
       draft: {},
       version: CURRENT_ONBOARDING_VERSION,
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.finishOnboarding(await issueReadToken(service));
+    const saveResult = await service.saveAnswer({
+      updates: [
+        {
+          node: 'summary',
+          patch: {},
+        },
+      ],
+    });
+    const finishResult = await service.finishOnboarding();
 
-    expect(result.success).toBe(true);
+    expect(saveResult.success).toBe(false);
+    expect(saveResult.error?.code).toBe('INCOMPLETE_NODE_DATA');
+    expect(finishResult.success).toBe(true);
     expect(persistedUserState.agentOnboarding.finishedAt).toBeTruthy();
     expect(persistedUserState.agentOnboarding.completedNodes).toContain('summary');
+  });
+
+  it('preserves flat node-scoped patch fields in the update schema', () => {
+    const parsed = UserAgentOnboardingUpdateSchema.parse({
+      node: 'agentIdentity',
+      patch: {
+        emoji: '🐍',
+        name: '小齐',
+        nature: 'Sharp, playful AI sidekick with insights',
+        vibe: 'Serpent-like: sharp, witty, and insightful',
+      },
+    });
+
+    expect(parsed.patch).toEqual({
+      emoji: '🐍',
+      name: '小齐',
+      nature: 'Sharp, playful AI sidekick with insights',
+      vibe: 'Serpent-like: sharp, witty, and insightful',
+    });
   });
 
   it('creates a persisted welcome message for a new onboarding topic', async () => {
@@ -619,11 +447,6 @@ describe('OnboardingService', () => {
       agentId: 'builtin-agent-1',
       title: 'Onboarding',
       trigger: 'chat',
-    });
-    expect(mockMessageModel.query).toHaveBeenCalledWith({
-      agentId: 'builtin-agent-1',
-      pageSize: 1,
-      topicId: 'topic-1',
     });
     expect(mockMessageModel.create).toHaveBeenCalledWith({
       agentId: 'builtin-agent-1',

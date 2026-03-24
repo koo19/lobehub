@@ -204,13 +204,12 @@ export const userRouter = router({
   getOnboardingState: userProcedure.query(async ({ ctx }) => {
     const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-    return onboardingService.getState({ issueReadToken: true });
+    return onboardingService.getState();
   }),
 
   saveOnboardingAnswer: userProcedure
     .input(
       z.object({
-        readToken: z.string().min(1),
         updates: z.array(UserAgentOnboardingUpdateSchema).min(1),
       }),
     )
@@ -225,7 +224,6 @@ export const userRouter = router({
       z.object({
         node: UserAgentOnboardingNodeSchema,
         question: UserAgentOnboardingQuestionDraftSchema,
-        readToken: z.string().min(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -238,39 +236,32 @@ export const userRouter = router({
     .input(
       z.object({
         node: UserAgentOnboardingNodeSchema,
-        readToken: z.string().min(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-      return onboardingService.completeCurrentStep(input.node, input.readToken);
+      return onboardingService.completeCurrentStep(input.node);
     }),
 
   returnToOnboarding: userProcedure
     .input(
       z.object({
-        readToken: z.string().min(1),
         reason: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-      return onboardingService.returnToOnboarding(input.readToken, input.reason);
+      return onboardingService.returnToOnboarding(input.reason);
     }),
 
-  finishOnboarding: userProcedure
-    .input(
-      z.object({
-        readToken: z.string().min(1),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+  finishOnboarding: userProcedure.input(z.object({})).mutation(async ({ ctx, input }) => {
+    const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+    void input;
 
-      return onboardingService.finishOnboarding(input.readToken);
-    }),
+    return onboardingService.finishOnboarding();
+  }),
 
   resetAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {
     const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);

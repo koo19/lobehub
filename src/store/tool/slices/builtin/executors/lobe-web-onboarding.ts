@@ -6,8 +6,17 @@ import { type BuiltinToolContext, type BuiltinToolResult } from '@lobechat/types
 import { BaseExecutor } from '@lobechat/types';
 
 import { userService } from '@/services/user';
+import { useUserStore } from '@/store/user';
 
 import { createWebOnboardingToolResult } from '../../../../../utils/webOnboardingToolResult';
+
+const syncUserOnboardingState = async () => {
+  try {
+    await useUserStore.getState().refreshUserState();
+  } catch (error) {
+    console.error(error);
+  }
+};
 
 class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   readonly identifier = WebOnboardingIdentifier;
@@ -25,12 +34,12 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
 
   saveAnswer = async (
     params: {
-      readToken: string;
       updates: Parameters<typeof userService.saveOnboardingAnswer>[0]['updates'];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
     const result = await userService.saveOnboardingAnswer(params);
+    await syncUserOnboardingState();
 
     return createWebOnboardingToolResult(result);
   };
@@ -39,11 +48,11 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     params: {
       node: Parameters<typeof userService.askOnboardingQuestion>[0]['node'];
       question: Parameters<typeof userService.askOnboardingQuestion>[0]['question'];
-      readToken: Parameters<typeof userService.askOnboardingQuestion>[0]['readToken'];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
     const result = await userService.askOnboardingQuestion(params);
+    await syncUserOnboardingState();
 
     return {
       content: result.content,
@@ -55,29 +64,28 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   completeCurrentStep = async (
     params: {
       node: Parameters<typeof userService.completeOnboardingStep>[0];
-      readToken: Parameters<typeof userService.completeOnboardingStep>[1];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.completeOnboardingStep(params.node, params.readToken);
+    const result = await userService.completeOnboardingStep(params.node);
+    await syncUserOnboardingState();
 
     return createWebOnboardingToolResult(result);
   };
 
   returnToOnboarding = async (
-    params: { readToken: string; reason?: string },
+    params: { reason?: string },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.returnToOnboarding(params.readToken, params.reason);
+    const result = await userService.returnToOnboarding(params.reason);
+    await syncUserOnboardingState();
 
     return createWebOnboardingToolResult(result);
   };
 
-  finishOnboarding = async (
-    params: { readToken: string },
-    _ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> => {
-    const result = await userService.finishOnboarding(params.readToken);
+  finishOnboarding = async (_params: Record<string, never>, _ctx: BuiltinToolContext) => {
+    const result = await userService.finishOnboarding();
+    await syncUserOnboardingState();
 
     return createWebOnboardingToolResult(result);
   };

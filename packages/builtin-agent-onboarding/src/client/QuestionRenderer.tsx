@@ -8,7 +8,8 @@ import type {
 } from '@lobechat/types';
 import { Button, Flexbox, Input, Select, Text } from '@lobehub/ui';
 import { Input as AntdInput } from 'antd';
-import type { type ChangeEvent, memo, ReactNode, useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 
 type FormValue = string | string[];
 
@@ -248,6 +249,7 @@ const QuestionForm = memo<{
     if (!message) return;
 
     await onSendMessage(message);
+
     onDismissNode?.(question.node);
   };
 

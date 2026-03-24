@@ -7,7 +7,7 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
   api: [
     {
       description:
-        'Read the current onboarding state, including the active step, committed values, saved draft, any currently stored question surface, and the control metadata required for the next onboarding tool call.',
+        'Read the current onboarding state, including the active step, committed values, saved draft, any currently stored question surface, and lightweight control metadata.',
       name: WebOnboardingApiName.getOnboardingState,
       parameters: {
         properties: {},
@@ -32,11 +32,6 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
               'proSettings',
               'summary',
             ],
-            type: 'string',
-          },
-          readToken: {
-            description:
-              'The latest single-use read token returned by getOnboardingState.control.readToken.',
             type: 'string',
           },
           question: {
@@ -145,7 +140,7 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
             type: 'object',
           },
         },
-        required: ['node', 'question', 'readToken'],
+        required: ['node', 'question'],
         type: 'object',
       },
     },
@@ -155,11 +150,6 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
       name: WebOnboardingApiName.saveAnswer,
       parameters: {
         properties: {
-          readToken: {
-            description:
-              'The latest single-use read token returned by getOnboardingState.control.readToken.',
-            type: 'string',
-          },
           updates: {
             items: {
               properties: {
@@ -187,7 +177,7 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
             type: 'array',
           },
         },
-        required: ['readToken', 'updates'],
+        required: ['updates'],
         type: 'object',
       },
     },
@@ -210,13 +200,8 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
             ],
             type: 'string',
           },
-          readToken: {
-            description:
-              'The latest single-use read token returned by getOnboardingState.control.readToken.',
-            type: 'string',
-          },
         },
-        required: ['node', 'readToken'],
+        required: ['node'],
         type: 'object',
       },
     },
@@ -226,14 +211,8 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
       name: WebOnboardingApiName.returnToOnboarding,
       parameters: {
         properties: {
-          readToken: {
-            description:
-              'The latest single-use read token returned by getOnboardingState.control.readToken.',
-            type: 'string',
-          },
           reason: { type: 'string' },
         },
-        required: ['readToken'],
         type: 'object',
       },
     },
@@ -242,14 +221,7 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
         'Finish the onboarding flow from the summary step and mirror the legacy onboarding completion flag.',
       name: WebOnboardingApiName.finishOnboarding,
       parameters: {
-        properties: {
-          readToken: {
-            description:
-              'The latest single-use read token returned by getOnboardingState.control.readToken.',
-            type: 'string',
-          },
-        },
-        required: ['readToken'],
+        properties: {},
         type: 'object',
       },
     },

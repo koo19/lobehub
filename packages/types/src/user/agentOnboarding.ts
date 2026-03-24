@@ -123,18 +123,11 @@ export interface UserAgentOnboardingQuestionSurface {
   updatedAt: string;
 }
 
-export interface UserAgentOnboardingExecutionGuard {
-  issuedAt: string;
-  readToken: string;
-}
-
 export interface UserAgentOnboardingControl {
   allowedTools: string[];
   canCompleteCurrentStep: boolean;
   canFinish: boolean;
   missingFields: string[];
-  readToken?: string;
-  readTokenRequired: boolean;
 }
 
 export interface UserAgentOnboardingContext {
@@ -168,7 +161,6 @@ export interface UserAgentOnboarding {
   agentIdentity?: UserOnboardingAgentIdentity;
   completedNodes?: UserAgentOnboardingNode[];
   draft?: UserAgentOnboardingDraft;
-  executionGuard?: UserAgentOnboardingExecutionGuard;
   finishedAt?: string;
   profile?: UserOnboardingProfile;
   questionSurface?: UserAgentOnboardingQuestionSurface;
@@ -289,17 +281,11 @@ const UserAgentOnboardingQuestionSurfaceSchema = z.object({
   updatedAt: z.string(),
 });
 
-const UserAgentOnboardingExecutionGuardSchema = z.object({
-  issuedAt: z.string(),
-  readToken: z.string(),
-});
-
 export const UserAgentOnboardingSchema = z.object({
   activeTopicId: z.string().optional(),
   agentIdentity: UserOnboardingAgentIdentitySchema.optional(),
   completedNodes: z.array(UserAgentOnboardingNodeSchema).optional(),
   draft: UserAgentOnboardingDraftSchema.optional(),
-  executionGuard: UserAgentOnboardingExecutionGuardSchema.optional(),
   finishedAt: z.string().optional(),
   profile: z
     .object({

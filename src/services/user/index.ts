@@ -45,10 +45,7 @@ export class UserService {
     return lambdaClient.user.getOnboardingState.query();
   };
 
-  saveOnboardingAnswer = async (params: {
-    readToken: string;
-    updates: UserAgentOnboardingUpdate[];
-  }) => {
+  saveOnboardingAnswer = async (params: { updates: UserAgentOnboardingUpdate[] }) => {
     return lambdaClient.user.saveOnboardingAnswer.mutate(
       params as Parameters<typeof lambdaClient.user.saveOnboardingAnswer.mutate>[0],
     );
@@ -57,21 +54,20 @@ export class UserService {
   askOnboardingQuestion = async (params: {
     node: UserAgentOnboardingNode;
     question: UserAgentOnboardingQuestionDraft;
-    readToken: string;
   }) => {
     return lambdaClient.user.askOnboardingQuestion.mutate(params);
   };
 
-  completeOnboardingStep = async (node: UserAgentOnboardingNode, readToken: string) => {
-    return lambdaClient.user.completeOnboardingStep.mutate({ node, readToken });
+  completeOnboardingStep = async (node: UserAgentOnboardingNode) => {
+    return lambdaClient.user.completeOnboardingStep.mutate({ node });
   };
 
-  returnToOnboarding = async (readToken: string, reason?: string) => {
-    return lambdaClient.user.returnToOnboarding.mutate({ readToken, reason });
+  returnToOnboarding = async (reason?: string) => {
+    return lambdaClient.user.returnToOnboarding.mutate({ reason });
   };
 
-  finishOnboarding = async (readToken: string) => {
-    return lambdaClient.user.finishOnboarding.mutate({ readToken });
+  finishOnboarding = async () => {
+    return lambdaClient.user.finishOnboarding.mutate({});
   };
 
   makeUserOnboarded = async () => {

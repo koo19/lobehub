@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
 import { CURRENT_ONBOARDING_VERSION } from '@lobechat/const';
 import type {
@@ -130,6 +128,45 @@ const REQUIRED_FIELDS_BY_NODE = {
 interface OnboardingNodeDraftState {
   missingFields?: string[];
   status: 'complete' | 'empty' | 'partial';
+}
+
+interface OnboardingError {
+  code: 'INCOMPLETE_NODE_DATA' | 'INVALID_PATCH_SHAPE' | 'NODE_MISMATCH' | 'ONBOARDING_COMPLETE';
+  message: string;
+}
+
+interface CommitStepResult {
+  content: string;
+  control: UserAgentOnboardingControl;
+  currentQuestion?: UserAgentOnboardingQuestion;
+  success: boolean;
+}
+
+interface ProposePatchResult {
+  activeNode?: UserAgentOnboardingNode;
+  activeNodeDraftState?: OnboardingNodeDraftState;
+  committedValue?: unknown;
+  content: string;
+  control?: UserAgentOnboardingControl;
+  currentQuestion?: UserAgentOnboardingQuestion;
+  draft: UserAgentOnboardingDraft;
+  error?: OnboardingError;
+  mismatch?: boolean;
+  nextAction: 'ask' | 'commit' | 'confirm';
+  processedNodes?: UserAgentOnboardingNode[];
+  requestedNode?: UserAgentOnboardingNode;
+  success: boolean;
+}
+
+interface AskQuestionResult {
+  activeNode?: UserAgentOnboardingNode;
+  content: string;
+  control?: UserAgentOnboardingControl;
+  currentQuestion?: UserAgentOnboardingQuestion;
+  mismatch?: boolean;
+  requestedNode?: UserAgentOnboardingNode;
+  storedQuestionId?: string;
+  success: boolean;
 }
 
 const getScopedPatch = (node: UserAgentOnboardingNode, patch: OnboardingPatchInput) => {
@@ -526,45 +563,14 @@ const getNodeDraftState = (
   };
 };
 
-const getNodeRecoveryInstruction = (node: UserAgentOnboardingNode) => {
-  switch (node) {
-    case 'agentIdentity': {
-      return 'Stay on agentIdentity. Do not call userIdentity yet. Ask the user to define your name, nature, vibe, and emoji, or offer concrete defaults and confirm one.';
-    }
-    case 'userIdentity': {
-      return 'Stay on userIdentity. Ask who the user is, what they do, and what domain they work in. Capture a concise summary plus any available name, role, or domain expertise.';
-    }
-    case 'workStyle': {
-      return 'Stay on workStyle. Ask how the user thinks, decides, communicates, and works with others. Capture a concise summary of their style.';
-    }
-    case 'workContext': {
-      return 'Stay on workContext. Ask about current focus, active projects, interests, tools, and near-term priorities. Capture a concise summary plus any concrete details.';
-    }
-    case 'painPoints': {
-      return 'Stay on painPoints. Ask what is blocked, frustrating, repetitive, or never gets enough time. Capture the actual friction, not generic preferences.';
-    }
-    case 'responseLanguage': {
-      return 'Stay on responseLanguage. Ask which language the user wants as the default reply language.';
-    }
-    case 'proSettings': {
-      return 'Stay on proSettings. Capture a default model/provider only if the user gives one or says they are ready to continue.';
-    }
-    case 'summary': {
-      return 'Stay on summary. Summarize the committed setup, ask only whether the summary is accurate, and call finishOnboarding immediately after a light confirmation. Do not ask what to do next inside onboarding.';
-    }
-  }
-};
-
 const buildOnboardingControl = ({
   activeNode,
   activeNodeDraftState,
   currentQuestion,
-  readToken,
 }: {
   activeNode?: UserAgentOnboardingNode;
   activeNodeDraftState?: OnboardingNodeDraftState;
   currentQuestion?: UserAgentOnboardingQuestion;
-  readToken?: string;
 }): UserAgentOnboardingControl => {
   const missingFields = activeNodeDraftState?.missingFields ?? [];
   const canCompleteCurrentStep =
@@ -574,14 +580,11 @@ const buildOnboardingControl = ({
 
   if (activeNode) {
     if (activeNode === 'summary') {
-      allowedTools.push(currentQuestion ? 'finishOnboarding' : 'askUserQuestion');
-    } else {
-      allowedTools.push('saveAnswer');
       allowedTools.push('askUserQuestion');
-
-      if (canCompleteCurrentStep) {
-        allowedTools.push('completeCurrentStep');
-      }
+      if (currentQuestion) allowedTools.push('finishOnboarding');
+    } else {
+      allowedTools.push('saveAnswer', 'askUserQuestion');
+      if (canCompleteCurrentStep) allowedTools.push('completeCurrentStep');
     }
   }
 
@@ -594,8 +597,6 @@ const buildOnboardingControl = ({
     canCompleteCurrentStep,
     canFinish,
     missingFields,
-    ...(readToken ? { readToken } : {}),
-    readTokenRequired: true,
   };
 };
 
@@ -609,46 +610,6 @@ const attachNodeToQuestion = (
   node: UserAgentOnboardingNode,
   question: UserAgentOnboardingQuestionDraft,
 ): UserAgentOnboardingQuestion => ({ ...question, node });
-
-interface ProposePatchResult {
-  activeNode?: UserAgentOnboardingNode;
-  activeNodeDraftState?: OnboardingNodeDraftState;
-  committedValue?: unknown;
-  content: string;
-  control?: UserAgentOnboardingControl;
-  currentQuestion?: UserAgentOnboardingQuestion;
-  draft: UserAgentOnboardingDraft;
-  error?: {
-    code:
-      | 'INCOMPLETE_NODE_DATA'
-      | 'INVALID_PATCH_SHAPE'
-      | 'NODE_MISMATCH'
-      | 'ONBOARDING_COMPLETE'
-      | 'STATE_READ_REQUIRED';
-    message: string;
-  };
-  instruction?: string;
-  mismatch?: boolean;
-  nextAction: 'ask' | 'commit' | 'confirm';
-  processedNodes?: UserAgentOnboardingNode[];
-  requestedNode?: UserAgentOnboardingNode;
-  requiresReadBeforeNextTool?: boolean;
-  savedDraftFields?: (keyof UserAgentOnboardingDraft)[];
-  success: boolean;
-}
-
-interface AskQuestionResult {
-  activeNode?: UserAgentOnboardingNode;
-  content: string;
-  control?: UserAgentOnboardingControl;
-  currentQuestion?: UserAgentOnboardingQuestion;
-  instruction?: string;
-  mismatch?: boolean;
-  requestedNode?: UserAgentOnboardingNode;
-  requiresReadBeforeNextTool?: boolean;
-  storedQuestionId?: string;
-  success: boolean;
-}
 
 export class OnboardingService {
   private readonly agentService: AgentService;
@@ -679,18 +640,20 @@ export class OnboardingService {
 
     const mergedState = merge(defaultAgentOnboardingState(), state ?? {}) as UserAgentOnboarding & {
       currentNode?: UserAgentOnboardingNode;
+      executionGuard?: unknown;
     };
-    const { currentNode: legacyCurrentNode, ...nextState } = mergedState;
+    const {
+      currentNode: legacyCurrentNode,
+      executionGuard: legacyExecutionGuard,
+      ...nextState
+    } = mergedState;
     void legacyCurrentNode;
+    void legacyExecutionGuard;
 
     return {
       ...nextState,
       completedNodes: dedupeNodes((nextState.completedNodes ?? []).filter(isValidNode)),
       draft: nextState.draft ?? {},
-      executionGuard:
-        nextState.executionGuard?.readToken && nextState.executionGuard?.issuedAt
-          ? nextState.executionGuard
-          : undefined,
       questionSurface:
         nextState.questionSurface?.node &&
         getActiveNode(nextState) === nextState.questionSurface.node
@@ -781,64 +744,9 @@ export class OnboardingService {
     };
   };
 
-  private issueReadToken = async (state: UserAgentOnboarding) => {
-    const readToken = randomUUID();
-    const nextState = await this.saveState({
-      ...state,
-      executionGuard: {
-        issuedAt: new Date().toISOString(),
-        readToken,
-      },
-    });
-
-    return { readToken, state: nextState };
-  };
-
-  private consumeReadToken = async (readToken?: string) => {
-    const state = await this.ensurePersistedState();
-
-    if (
-      !readToken ||
-      !state.executionGuard?.readToken ||
-      state.executionGuard.readToken !== readToken
-    ) {
-      return {
-        error: {
-          code: 'STATE_READ_REQUIRED' as const,
-          message:
-            'Call getOnboardingState immediately before any other onboarding tool. The read token is missing, stale, or already used.',
-        },
-        instruction:
-          'Call getOnboardingState immediately before any other onboarding tool. Then use the latest control.readToken in the next tool call.',
-        state,
-        success: false,
-      };
-    }
-
-    const { executionGuard: _executionGuard, ...restState } = state;
-    void _executionGuard;
-
-    await this.saveState(restState);
-
-    return {
-      state: restState,
-      success: true,
-    };
-  };
-
-  getState = async (options?: {
-    issueReadToken?: boolean;
-  }): Promise<UserAgentOnboardingContext> => {
+  getState = async (): Promise<UserAgentOnboardingContext> => {
     const userState = await this.getUserState();
-    let state = this.ensureState(userState.agentOnboarding);
-    let readToken: string | undefined;
-
-    if (options?.issueReadToken && !state.finishedAt) {
-      const issued = await this.issueReadToken(state);
-      readToken = issued.readToken;
-      state = issued.state;
-    }
-
+    const state = this.ensureState(userState.agentOnboarding);
     const committed = {
       agentIdentity: state.agentIdentity,
       defaultModel: userState.settings.defaultAgent?.config
@@ -882,11 +790,10 @@ export class OnboardingService {
         activeNode,
         activeNodeDraftState,
         currentQuestion,
-        readToken,
       }),
+      currentQuestion,
       draft,
       finishedAt: state.finishedAt,
-      currentQuestion,
       topicId: state.activeTopicId,
       version: state.version,
     };
@@ -895,24 +802,7 @@ export class OnboardingService {
   askQuestion = async (params: {
     node: UserAgentOnboardingNode;
     question: UserAgentOnboardingQuestionDraft;
-    readToken: string;
   }): Promise<AskQuestionResult> => {
-    const readTokenResult = await this.consumeReadToken(params.readToken);
-
-    if (!readTokenResult.success) {
-      const nextContext = await this.getState();
-      const error = readTokenResult.error!;
-
-      return {
-        activeNode: nextContext.activeNode,
-        content: error.message,
-        control: nextContext.control,
-        currentQuestion: nextContext.currentQuestion,
-        instruction: readTokenResult.instruction,
-        success: false,
-      };
-    }
-
     const context = await this.getState();
     const activeNode = context.activeNode;
 
@@ -925,14 +815,11 @@ export class OnboardingService {
     }
 
     if (params.node !== activeNode) {
-      const instruction = getNodeRecoveryInstruction(activeNode);
-
       return {
         activeNode,
-        content: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}". ${instruction}`,
+        content: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}".`,
         control: context.control,
         currentQuestion: context.currentQuestion,
-        instruction,
         mismatch: true,
         requestedNode: params.node,
         success: false,
@@ -964,29 +851,8 @@ export class OnboardingService {
   };
 
   saveAnswer = async (params: {
-    readToken: string;
     updates: Array<Pick<UserAgentOnboardingUpdate, 'node'> & { patch: OnboardingPatchInput }>;
   }): Promise<ProposePatchResult> => {
-    const readTokenResult = await this.consumeReadToken(params.readToken);
-
-    if (!readTokenResult.success) {
-      const nextContext = await this.getState();
-      const error = readTokenResult.error!;
-
-      return {
-        activeNode: nextContext.activeNode,
-        activeNodeDraftState: nextContext.activeNodeDraftState,
-        content: error.message,
-        control: nextContext.control,
-        currentQuestion: nextContext.currentQuestion,
-        draft: nextContext.draft,
-        error,
-        instruction: readTokenResult.instruction,
-        nextAction: 'ask',
-        success: false,
-      };
-    }
-
     const updates = [...params.updates].sort((left, right) => {
       return getNodeIndex(left.node) - getNodeIndex(right.node);
     });
@@ -1001,41 +867,37 @@ export class OnboardingService {
       latestResult = result;
       contentParts.push(result.content);
 
-      if (result.success) {
-        processedNodes.push(update.node);
+      if (!result.success) {
+        const nextContext = await this.getState();
 
-        if (result.activeNodeDraftState?.status === 'partial') {
-          const nextContext = await this.getState();
-
-          return {
-            ...result,
-            content: contentParts.join('\n'),
-            activeNode: nextContext.activeNode,
-            activeNodeDraftState: nextContext.activeNodeDraftState,
-            control: nextContext.control,
-            currentQuestion: nextContext.currentQuestion,
-            draft: nextContext.draft,
-            processedNodes,
-          };
-        }
-
-        continue;
+        return {
+          ...result,
+          activeNode: nextContext.activeNode,
+          activeNodeDraftState: nextContext.activeNodeDraftState,
+          content: contentParts.join('\n'),
+          control: nextContext.control,
+          currentQuestion: nextContext.currentQuestion,
+          draft: nextContext.draft,
+          processedNodes,
+        };
       }
 
-      if (result.mismatch) continue;
+      processedNodes.push(update.node);
 
-      const nextContext = await this.getState();
+      if (result.activeNodeDraftState?.status === 'partial') {
+        const nextContext = await this.getState();
 
-      return {
-        ...result,
-        content: contentParts.join('\n'),
-        activeNode: nextContext.activeNode,
-        activeNodeDraftState: nextContext.activeNodeDraftState,
-        control: nextContext.control,
-        currentQuestion: nextContext.currentQuestion,
-        draft: nextContext.draft,
-        processedNodes,
-      };
+        return {
+          ...result,
+          activeNode: nextContext.activeNode,
+          activeNodeDraftState: nextContext.activeNodeDraftState,
+          content: contentParts.join('\n'),
+          control: nextContext.control,
+          currentQuestion: nextContext.currentQuestion,
+          draft: nextContext.draft,
+          processedNodes,
+        };
+      }
     }
 
     const nextContext = await this.getState();
@@ -1047,9 +909,9 @@ export class OnboardingService {
         nextAction: 'ask' as const,
         success: false,
       }),
-      content: contentParts.join('\n'),
       activeNode: nextContext.activeNode,
       activeNodeDraftState: nextContext.activeNodeDraftState,
+      content: contentParts.join('\n'),
       control: nextContext.control,
       currentQuestion: nextContext.currentQuestion,
       draft: nextContext.draft,
@@ -1077,51 +939,14 @@ export class OnboardingService {
     }
 
     if (params.node !== activeNode) {
-      const activeNodeIndex = getNodeIndex(activeNode);
-      const requestedNodeIndex = getNodeIndex(params.node);
-      const recoverableDraft =
-        requestedNodeIndex > activeNodeIndex
-          ? extractDraftForNode(params.node, params.patch)
-          : undefined;
-
-      if (recoverableDraft) {
-        const draft = mergeDraftForNode(
-          context.draft,
-          params.node,
-          getDraftValueForNode(recoverableDraft, params.node),
-        );
-        const instruction = getNodeRecoveryInstruction(activeNode);
-
-        await this.saveState({ ...(await this.ensurePersistedState()), draft });
-
-        return {
-          activeNode,
-          content: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}". I saved the later-step draft for "${params.node}", but do not advance yet. ${instruction}`,
-          draft,
-          error: {
-            code: 'NODE_MISMATCH',
-            message: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}".`,
-          },
-          instruction,
-          mismatch: true,
-          nextAction: 'ask',
-          requestedNode: params.node,
-          savedDraftFields: Object.keys(recoverableDraft) as (keyof UserAgentOnboardingDraft)[],
-          success: false,
-        };
-      }
-
-      const instruction = getNodeRecoveryInstruction(activeNode);
-
       return {
         activeNode,
-        content: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}". ${instruction}`,
+        content: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}".`,
         draft: context.draft,
         error: {
           code: 'NODE_MISMATCH',
           message: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}".`,
         },
-        instruction,
         mismatch: true,
         nextAction: 'ask',
         requestedNode: params.node,
@@ -1182,10 +1007,9 @@ export class OnboardingService {
         committedValue: getDraftValueForNode(draft, activeNode),
         content: commitResult.content,
         control: commitResult.control,
+        currentQuestion: commitResult.currentQuestion,
         draft: {},
-        instruction: commitResult.instruction,
         nextAction: 'ask',
-        requiresReadBeforeNextTool: commitResult.requiresReadBeforeNextTool,
         success: commitResult.success,
       };
     }
@@ -1213,7 +1037,7 @@ export class OnboardingService {
   private commitActiveStep = async (
     state: UserAgentOnboarding,
     activeNode: UserAgentOnboardingNode,
-  ) => {
+  ): Promise<CommitStepResult> => {
     const draft = state.draft ?? {};
 
     switch (activeNode) {
@@ -1231,7 +1055,6 @@ export class OnboardingService {
                   ? state.questionSurface.question
                   : undefined,
             }),
-            nextNode: activeNode,
             success: false,
           };
         }
@@ -1253,7 +1076,6 @@ export class OnboardingService {
                   ? state.questionSurface.question
                   : undefined,
             }),
-            nextNode: activeNode,
             success: false,
           };
         }
@@ -1283,7 +1105,6 @@ export class OnboardingService {
                   ? state.questionSurface.question
                   : undefined,
             }),
-            nextNode: activeNode,
             success: false,
           };
         }
@@ -1308,7 +1129,6 @@ export class OnboardingService {
                   ? state.questionSurface.question
                   : undefined,
             }),
-            nextNode: activeNode,
             success: false,
           };
         }
@@ -1344,7 +1164,6 @@ export class OnboardingService {
                   ? state.questionSurface.question
                   : undefined,
             }),
-            nextNode: activeNode,
             success: false,
           };
         }
@@ -1367,7 +1186,6 @@ export class OnboardingService {
                   ? state.questionSurface.question
                   : undefined,
             }),
-            nextNode: activeNode,
             success: false,
           };
         }
@@ -1383,17 +1201,30 @@ export class OnboardingService {
       case 'proSettings': {
         const defaultModel = normalizeDefaultModel(draft.defaultModel);
 
-        if (defaultModel) {
-          const currentSettings = await this.userModel.getUserSettings();
-          await this.userModel.updateSetting({
-            defaultAgent: merge(currentSettings?.defaultAgent || {}, {
-              config: {
-                model: defaultModel.model,
-                provider: defaultModel.provider,
-              },
+        if (!defaultModel) {
+          return {
+            content: 'Default model has not been captured yet.',
+            control: buildOnboardingControl({
+              activeNode,
+              activeNodeDraftState: getNodeDraftState(activeNode, draft),
+              currentQuestion:
+                state.questionSurface?.node === activeNode
+                  ? state.questionSurface.question
+                  : undefined,
             }),
-          });
+            success: false,
+          };
         }
+
+        const currentSettings = await this.userModel.getUserSettings();
+        await this.userModel.updateSetting({
+          defaultAgent: merge(currentSettings?.defaultAgent || {}, {
+            config: {
+              model: defaultModel.model,
+              provider: defaultModel.provider,
+            },
+          }),
+        });
         break;
       }
       case 'summary': {
@@ -1401,13 +1232,11 @@ export class OnboardingService {
           content: 'Use finishOnboarding from the summary step.',
           control: buildOnboardingControl({
             activeNode,
-            activeNodeDraftState: undefined,
             currentQuestion:
               state.questionSurface?.node === activeNode
                 ? state.questionSurface.question
                 : undefined,
           }),
-          nextNode: activeNode,
           success: false,
         };
       }
@@ -1437,38 +1266,14 @@ export class OnboardingService {
       content: nextNode
         ? `Committed step "${activeNode}". Continue with "${nextNode}".`
         : `Committed step "${activeNode}".`,
-      activeNodeDraftState: nextContext.activeNodeDraftState,
       control: nextContext.control,
       currentQuestion: nextContext.currentQuestion,
-      instruction:
-        nextNode && !nextContext.currentQuestion
-          ? `State advanced to "${nextNode}". Call getOnboardingState again before any other onboarding tool. If the next step still has no current question, call askUserQuestion for "${nextNode}" before replying.`
-          : undefined,
-      nextNode: nextNode ?? activeNode,
-      requiresReadBeforeNextTool: true,
       success: true,
     };
   };
 
-  completeCurrentStep = async (node: UserAgentOnboardingNode, readToken: string) => {
-    const readTokenResult = await this.consumeReadToken(readToken);
-
-    if (!readTokenResult.success) {
-      const nextContext = await this.getState();
-      const error = readTokenResult.error!;
-
-      return {
-        activeNode: nextContext.activeNode,
-        activeNodeDraftState: nextContext.activeNodeDraftState,
-        content: error.message,
-        control: nextContext.control,
-        currentQuestion: nextContext.currentQuestion,
-        instruction: readTokenResult.instruction,
-        success: false,
-      };
-    }
-
-    const state = readTokenResult.state;
+  completeCurrentStep = async (node: UserAgentOnboardingNode) => {
+    const state = await this.ensurePersistedState();
     const activeNode = getActiveNode(state);
 
     if (!activeNode) {
@@ -1485,16 +1290,32 @@ export class OnboardingService {
 
     if (node !== activeNode) {
       return {
+        activeNode,
+        activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
         content: `Active onboarding step is "${activeNode}", not "${node}".`,
         control: buildOnboardingControl({
           activeNode,
           activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
           currentQuestion:
-            state.questionSurface && state.questionSurface.node === activeNode
-              ? state.questionSurface.question
-              : undefined,
+            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
         }),
-        nextNode: activeNode,
+        success: false,
+      };
+    }
+
+    const draftState = getNodeDraftState(activeNode, state.draft ?? {});
+
+    if (activeNode !== 'summary' && draftState?.status !== 'complete') {
+      return {
+        activeNode,
+        activeNodeDraftState: draftState,
+        content: `Active onboarding step "${activeNode}" is still incomplete.`,
+        control: buildOnboardingControl({
+          activeNode,
+          activeNodeDraftState: draftState,
+          currentQuestion:
+            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
+        }),
         success: false,
       };
     }
@@ -1502,36 +1323,19 @@ export class OnboardingService {
     return this.commitActiveStep(state, activeNode);
   };
 
-  returnToOnboarding = async (readToken: string, reason?: string) => {
-    const readTokenResult = await this.consumeReadToken(readToken);
-
-    if (!readTokenResult.success) {
-      const nextContext = await this.getState();
-      const error = readTokenResult.error!;
-
-      return {
-        activeNode: nextContext.activeNode,
-        content: error.message,
-        control: nextContext.control,
-        currentQuestion: nextContext.currentQuestion,
-        instruction: readTokenResult.instruction,
-        success: false,
-      };
-    }
-
-    const state = readTokenResult.state;
+  returnToOnboarding = async (reason?: string) => {
+    const state = await this.ensurePersistedState();
     const activeNode = getActiveNode(state);
     const draft = state.draft ?? {};
+    const questionSurface = state.questionSurface;
     const currentQuestion =
-      state.questionSurface && state.questionSurface.node === activeNode
-        ? state.questionSurface.question
-        : undefined;
+      questionSurface && questionSurface.node === activeNode ? questionSurface.question : undefined;
 
     return {
+      activeNode,
       content: reason
         ? `Stay on onboarding. Off-topic reason: ${reason}`
         : 'Stay on onboarding and continue with the current question.',
-      activeNode,
       control: buildOnboardingControl({
         activeNode,
         activeNodeDraftState: getNodeDraftState(activeNode, draft),
@@ -1542,35 +1346,21 @@ export class OnboardingService {
     };
   };
 
-  finishOnboarding = async (readToken: string) => {
-    const readTokenResult = await this.consumeReadToken(readToken);
-
-    if (!readTokenResult.success) {
-      const nextContext = await this.getState();
-      const error = readTokenResult.error!;
-
-      return {
-        activeNode: nextContext.activeNode,
-        content: error.message,
-        control: nextContext.control,
-        currentQuestion: nextContext.currentQuestion,
-        instruction: readTokenResult.instruction,
-        success: false,
-      };
-    }
-
-    const state = readTokenResult.state;
+  finishOnboarding = async () => {
+    const state = await this.ensurePersistedState();
     const activeNode = getActiveNode(state);
 
     if (activeNode !== 'summary') {
+      const questionSurface = state.questionSurface;
+
       return {
         content: `Active onboarding step is "${activeNode ?? 'completed'}". Finish is only allowed in "summary".`,
         control: buildOnboardingControl({
           activeNode,
           activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
           currentQuestion:
-            state.questionSurface && state.questionSurface.node === activeNode
-              ? state.questionSurface.question
+            questionSurface && questionSurface.node === activeNode
+              ? questionSurface.question
               : undefined,
         }),
         success: false,
