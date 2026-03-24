@@ -9,7 +9,6 @@ import type {
   UserAgentOnboardingQuestion,
   UserAgentOnboardingQuestionDraft,
   UserAgentOnboardingUpdate,
-  UserOnboardingDefaultModel,
 } from '@lobechat/types';
 import { AGENT_ONBOARDING_NODES, MAX_ONBOARDING_STEPS } from '@lobechat/types';
 import { merge } from '@lobechat/utils';
@@ -23,7 +22,6 @@ import { AgentService } from '@/server/services/agent';
 import { translation } from '@/server/translation';
 
 type OnboardingAgentIdentity = NonNullable<UserAgentOnboarding['agentIdentity']>;
-type OnboardingDefaultModel = UserOnboardingDefaultModel;
 type OnboardingPatchInput = Record<string, unknown>;
 type OnboardingDraftAgentIdentity = NonNullable<UserAgentOnboardingDraft['agentIdentity']>;
 type OnboardingDraftPainPoints = NonNullable<UserAgentOnboardingDraft['painPoints']>;
@@ -45,6 +43,7 @@ const ONBOARDING_TOOL_NAMES = [
   'returnToOnboarding',
   'finishOnboarding',
 ] as const;
+const REMOVED_ONBOARDING_NODES = ['proSettings'] as const;
 
 const defaultAgentOnboardingState = (): UserAgentOnboarding => ({
   completedNodes: [],
@@ -94,7 +93,6 @@ const asStringArray = (value: unknown) =>
 const NODE_FIELDS = {
   agentIdentity: ['emoji', 'name', 'nature', 'vibe'],
   painPoints: ['blockedBy', 'frustrations', 'noTimeFor', 'summary'],
-  proSettings: ['model', 'provider'],
   userIdentity: ['domainExpertise', 'name', 'professionalRole', 'summary'],
   workContext: [
     'activeProjects',
@@ -118,7 +116,6 @@ const NODE_FIELDS = {
 const REQUIRED_FIELDS_BY_NODE = {
   agentIdentity: ['emoji', 'name', 'nature', 'vibe'],
   painPoints: ['summary'],
-  proSettings: ['model', 'provider'],
   responseLanguage: ['responseLanguage'],
   userIdentity: ['summary'],
   workContext: ['summary'],
@@ -170,8 +167,7 @@ interface AskQuestionResult {
 }
 
 const getScopedPatch = (node: UserAgentOnboardingNode, patch: OnboardingPatchInput) => {
-  const nestedKey = node === 'proSettings' ? 'defaultModel' : node;
-  const nestedPatch = isRecord(patch[nestedKey]) ? patch[nestedKey] : undefined;
+  const nestedPatch = isRecord(patch[node]) ? patch[node] : undefined;
   const scopedKeys = NODE_FIELDS[node as keyof typeof NODE_FIELDS] ?? [];
   const scopedPatch: OnboardingPatchInput = {};
 
@@ -398,30 +394,6 @@ const normalizePainPoints = (value?: unknown): OnboardingPainPoints | undefined 
   };
 };
 
-const normalizeDefaultModelDraft = (
-  value?: unknown,
-): Partial<OnboardingDefaultModel> | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const model = sanitizeText(asString(patch?.model));
-  const provider = sanitizeText(asString(patch?.provider));
-  const nextDraft = {
-    ...(model ? { model } : {}),
-    ...(provider ? { provider } : {}),
-  };
-
-  return Object.keys(nextDraft).length > 0 ? nextDraft : undefined;
-};
-
-const normalizeDefaultModel = (value?: unknown): OnboardingDefaultModel | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const model = sanitizeText(asString(patch?.model));
-  const provider = sanitizeText(asString(patch?.provider));
-
-  if (!model || !provider) return undefined;
-
-  return { model, provider };
-};
-
 const mergeDraftForNode = (
   draft: UserAgentOnboardingDraft,
   node: UserAgentOnboardingNode,
@@ -448,9 +420,6 @@ const mergeDraftForNode = (
     case 'responseLanguage': {
       return { ...draft, responseLanguage: patch as string };
     }
-    case 'proSettings': {
-      return { ...draft, defaultModel: { ...draft.defaultModel, ...patchRecord } };
-    }
     case 'summary': {
       return draft;
     }
@@ -476,9 +445,6 @@ const getDraftValueForNode = (draft: UserAgentOnboardingDraft, node: UserAgentOn
     }
     case 'responseLanguage': {
       return draft.responseLanguage;
-    }
-    case 'proSettings': {
-      return draft.defaultModel;
     }
     case 'summary': {
       return undefined;
@@ -517,10 +483,6 @@ const extractDraftForNode = (
       const responseLanguage = sanitizeText(asString(patch.responseLanguage));
       return responseLanguage ? { responseLanguage } : undefined;
     }
-    case 'proSettings': {
-      const defaultModel = normalizeDefaultModelDraft(scopedPatch);
-      return defaultModel ? { defaultModel } : undefined;
-    }
     case 'summary': {
       return undefined;
     }
@@ -533,12 +495,7 @@ const getNodeDraftState = (
 ): OnboardingNodeDraftState | undefined => {
   if (!node || node === 'summary') return undefined;
 
-  const currentDraft =
-    node === 'proSettings'
-      ? draft.defaultModel
-      : node === 'responseLanguage'
-        ? draft.responseLanguage
-        : draft[node];
+  const currentDraft = node === 'responseLanguage' ? draft.responseLanguage : draft[node];
 
   if (typeof currentDraft === 'string') {
     return currentDraft
@@ -630,9 +587,16 @@ export class OnboardingService {
   }
 
   private ensureState = (state?: UserAgentOnboarding): UserAgentOnboarding => {
+    const invalidCompletedNodes = (state?.completedNodes ?? []).filter(
+      (node) => !isValidNode(node),
+    );
+
     if (
       !state ||
-      (state.completedNodes ?? []).some((node) => !isValidNode(node)) ||
+      invalidCompletedNodes.some(
+        (node) =>
+          !REMOVED_ONBOARDING_NODES.includes(node as (typeof REMOVED_ONBOARDING_NODES)[number]),
+      ) ||
       (state.version ?? 0) < CURRENT_ONBOARDING_VERSION
     ) {
       return defaultAgentOnboardingState();
@@ -749,12 +713,6 @@ export class OnboardingService {
     const state = this.ensureState(userState.agentOnboarding);
     const committed = {
       agentIdentity: state.agentIdentity,
-      defaultModel: userState.settings.defaultAgent?.config
-        ? {
-            model: userState.settings.defaultAgent.config.model,
-            provider: userState.settings.defaultAgent.config.provider,
-          }
-        : undefined,
       profile: {
         ...state.profile,
         ...(userState.fullName && !state.profile?.identity?.name
@@ -1198,35 +1156,6 @@ export class OnboardingService {
         });
         break;
       }
-      case 'proSettings': {
-        const defaultModel = normalizeDefaultModel(draft.defaultModel);
-
-        if (!defaultModel) {
-          return {
-            content: 'Default model has not been captured yet.',
-            control: buildOnboardingControl({
-              activeNode,
-              activeNodeDraftState: getNodeDraftState(activeNode, draft),
-              currentQuestion:
-                state.questionSurface?.node === activeNode
-                  ? state.questionSurface.question
-                  : undefined,
-            }),
-            success: false,
-          };
-        }
-
-        const currentSettings = await this.userModel.getUserSettings();
-        await this.userModel.updateSetting({
-          defaultAgent: merge(currentSettings?.defaultAgent || {}, {
-            config: {
-              model: defaultModel.model,
-              provider: defaultModel.provider,
-            },
-          }),
-        });
-        break;
-      }
       case 'summary': {
         return {
           content: 'Use finishOnboarding from the summary step.',
@@ -1252,7 +1181,6 @@ export class OnboardingService {
     if (activeNode === 'workContext') delete nextDraft.workContext;
     if (activeNode === 'painPoints') delete nextDraft.painPoints;
     if (activeNode === 'responseLanguage') delete nextDraft.responseLanguage;
-    if (activeNode === 'proSettings') delete nextDraft.defaultModel;
 
     await this.saveState({
       ...state,

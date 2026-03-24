@@ -7,7 +7,6 @@ export const AGENT_ONBOARDING_NODES = [
   'workContext',
   'painPoints',
   'responseLanguage',
-  'proSettings',
   'summary',
 ] as const;
 
@@ -16,11 +15,6 @@ export type UserAgentOnboardingNode = (typeof AGENT_ONBOARDING_NODES)[number];
 export interface UserAgentOnboardingUpdate {
   node: UserAgentOnboardingNode;
   patch: Record<string, unknown>;
-}
-
-export interface UserOnboardingDefaultModel {
-  model: string;
-  provider: string;
 }
 
 export interface UserOnboardingAgentIdentity {
@@ -148,7 +142,6 @@ export interface UserAgentOnboardingContext {
 
 export interface UserAgentOnboardingDraft {
   agentIdentity?: Partial<UserOnboardingAgentIdentity>;
-  defaultModel?: Partial<UserOnboardingDefaultModel>;
   painPoints?: Partial<UserOnboardingDimensionPainPoints>;
   responseLanguage?: string;
   userIdentity?: Partial<UserOnboardingDimensionIdentity>;
@@ -261,13 +254,6 @@ const UserAgentOnboardingQuestionSchema = UserAgentOnboardingQuestionDraftSchema
 
 export const UserAgentOnboardingDraftSchema = z.object({
   agentIdentity: UserOnboardingAgentIdentitySchema.partial().optional(),
-  defaultModel: z
-    .object({
-      model: z.string(),
-      provider: z.string(),
-    })
-    .partial()
-    .optional(),
   painPoints: UserOnboardingDimensionPainPointsSchema.partial().optional(),
   responseLanguage: z.string().optional(),
   userIdentity: UserOnboardingDimensionIdentitySchema.partial().optional(),

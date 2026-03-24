@@ -124,6 +124,35 @@ describe('OnboardingService', () => {
     expect(context.committed.agentIdentity).toBeUndefined();
   });
 
+  it('preserves progress when migrating away from the removed proSettings node', async () => {
+    persistedUserState.agentOnboarding = {
+      completedNodes: [
+        'agentIdentity',
+        'userIdentity',
+        'workStyle',
+        'workContext',
+        'painPoints',
+        'responseLanguage',
+        'proSettings',
+      ],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    const service = new OnboardingService(mockDb, userId);
+    const context = await service.getState();
+
+    expect(context.activeNode).toBe('summary');
+    expect(context.completedNodes).toEqual([
+      'agentIdentity',
+      'userIdentity',
+      'workStyle',
+      'workContext',
+      'painPoints',
+      'responseLanguage',
+    ]);
+  });
+
   it('returns lightweight control metadata without read tokens', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
@@ -389,7 +418,6 @@ describe('OnboardingService', () => {
         'workContext',
         'painPoints',
         'responseLanguage',
-        'proSettings',
       ],
       draft: {},
       version: CURRENT_ONBOARDING_VERSION,

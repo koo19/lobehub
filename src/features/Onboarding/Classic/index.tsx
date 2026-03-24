@@ -10,7 +10,6 @@ import ModeSwitch from '@/features/Onboarding/components/ModeSwitch';
 import OnboardingContainer from '@/routes/onboarding/_layout';
 import FullNameStep from '@/routes/onboarding/features/FullNameStep';
 import InterestsStep from '@/routes/onboarding/features/InterestsStep';
-import ProSettingsStep from '@/routes/onboarding/features/ProSettingsStep';
 import ResponseLanguageStep from '@/routes/onboarding/features/ResponseLanguageStep';
 import TelemetryStep from '@/routes/onboarding/features/TelemetryStep';
 import { useUserStore } from '@/store/user';
@@ -19,14 +18,21 @@ import { isDev } from '@/utils/env';
 
 const ClassicOnboardingPage = memo(() => {
   const { t } = useTranslation('onboarding');
-  const [isUserStateInit, currentStep, goToNextStep, goToPreviousStep, resetOnboarding] =
-    useUserStore((s) => [
-      s.isUserStateInit,
-      onboardingSelectors.currentStep(s),
-      s.goToNextStep,
-      s.goToPreviousStep,
-      s.resetOnboarding,
-    ]);
+  const [
+    isUserStateInit,
+    currentStep,
+    finishOnboarding,
+    goToNextStep,
+    goToPreviousStep,
+    resetOnboarding,
+  ] = useUserStore((s) => [
+    s.isUserStateInit,
+    onboardingSelectors.currentStep(s),
+    s.finishOnboarding,
+    s.goToNextStep,
+    s.goToPreviousStep,
+    s.resetOnboarding,
+  ]);
   const [isResetting, setIsResetting] = useState(false);
 
   if (!isUserStateInit) {
@@ -54,11 +60,8 @@ const ClassicOnboardingPage = memo(() => {
       case 3: {
         return <InterestsStep onBack={goToPreviousStep} onNext={goToNextStep} />;
       }
-      case 4: {
-        return <ResponseLanguageStep onBack={goToPreviousStep} onNext={goToNextStep} />;
-      }
       case MAX_ONBOARDING_STEPS: {
-        return <ProSettingsStep onBack={goToPreviousStep} />;
+        return <ResponseLanguageStep onBack={goToPreviousStep} onNext={finishOnboarding} />;
       }
       default: {
         return null;

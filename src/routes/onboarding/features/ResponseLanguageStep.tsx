@@ -16,7 +16,7 @@ import LobeMessage from '../components/LobeMessage';
 
 interface ResponseLanguageStepProps {
   onBack: () => void;
-  onNext: () => void;
+  onNext: () => Promise<void> | void;
 }
 
 const ResponseLanguageStep = memo<ResponseLanguageStepProps>(({ onBack, onNext }) => {
@@ -28,12 +28,12 @@ const ResponseLanguageStep = memo<ResponseLanguageStepProps>(({ onBack, onNext }
   const [isNavigating, setIsNavigating] = useState(false);
   const isNavigatingRef = useRef(false);
 
-  const handleNext = useCallback(() => {
+  const handleNext = useCallback(async () => {
     if (isNavigatingRef.current) return;
     isNavigatingRef.current = true;
     setIsNavigating(true);
-    setSettings({ general: { responseLanguage: value || '' } });
-    onNext();
+    await setSettings({ general: { responseLanguage: value || '' } });
+    await onNext();
   }, [value, setSettings, onNext]);
 
   const handleBack = useCallback(() => {

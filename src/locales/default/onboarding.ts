@@ -19,6 +19,12 @@ export default {
   'agent.summaryHint': 'Finish here if the setup summary looks right.',
   'agent.welcome':
     "I just came online. Let's shape how we work together. Start by giving me a name, a vibe, and an emoji that fits.",
+  'agent.greeting.prompt': 'Give me a name, a vibe, and an emoji',
+  'agent.greeting.nameLabel': 'Name',
+  'agent.greeting.namePlaceholder': 'e.g. Lumi, Atlas, Neko...',
+  'agent.greeting.vibeLabel': 'Vibe / Nature',
+  'agent.greeting.vibePlaceholder': 'e.g. Warm & friendly, Sharp & direct...',
+  'agent.greeting.emojiLabel': 'Emoji',
   'agent.telemetryAllow': 'Allow telemetry',
   'agent.telemetryDecline': 'No thanks',
   'agent.telemetryHint': 'You can also answer in your own words.',

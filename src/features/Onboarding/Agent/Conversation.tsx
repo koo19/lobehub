@@ -1,9 +1,10 @@
 'use client';
 
 import type { UserAgentOnboardingNode, UserAgentOnboardingQuestion } from '@lobechat/types';
-import { Flexbox } from '@lobehub/ui';
-import { createStyles } from 'antd-style';
+import { Avatar, Flexbox, Markdown, Text } from '@lobehub/ui';
+import { Divider } from 'antd';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { ActionKeys } from '@/features/ChatInput';
 import {
@@ -13,22 +14,13 @@ import {
   MessageItem,
   useConversationStore,
 } from '@/features/Conversation';
+import { useAgentMeta } from '@/features/Conversation/hooks/useAgentMeta';
 import { isDev } from '@/utils/env';
 
 import QuestionRenderer from './QuestionRenderer';
+import { staticStyle } from './staticStyle';
 
 const assistantLikeRoles = new Set(['assistant', 'assistantGroup', 'supervisor']);
-
-const useStyles = createStyles(({ css, token }) => ({
-  composerZone: css`
-    gap: 8px;
-  `,
-  inlineQuestion: css`
-    margin-block-start: 4px;
-    padding-block-start: 12px;
-    border-block-start: 1px solid ${token.colorBorderSecondary};
-  `,
-}));
 
 interface AgentOnboardingConversationProps {
   currentQuestion?: UserAgentOnboardingQuestion;
@@ -39,7 +31,8 @@ const chatInputLeftActions: ActionKeys[] = isDev ? ['model'] : [];
 
 const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
   ({ currentQuestion, readOnly }) => {
-    const { styles } = useStyles();
+    const { t } = useTranslation('onboarding');
+    const agentMeta = useAgentMeta();
     const [dismissedNodes, setDismissedNodes] = useState<string[]>([]);
     const displayMessages = useConversationStore(conversationSelectors.displayMessages);
     const questionSignature = useMemo(
@@ -75,28 +68,103 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
       setDismissedNodes((state) => (state.includes(node) ? state : [...state, node]));
     }, []);
 
+    const isGreetingState = useMemo(() => {
+      if (displayMessages.length !== 1) return false;
+      const first = displayMessages[0];
+      return assistantLikeRoles.has(first.role);
+    }, [displayMessages]);
+
+    const presetGreetingQuestion = useMemo<UserAgentOnboardingQuestion>(
+      () => ({
+        fields: [
+          {
+            key: 'name',
+            kind: 'text' as const,
+            label: t('agent.greeting.nameLabel'),
+            placeholder: t('agent.greeting.namePlaceholder'),
+          },
+          {
+            key: 'vibe',
+            kind: 'text' as const,
+            label: t('agent.greeting.vibeLabel'),
+            placeholder: t('agent.greeting.vibePlaceholder'),
+          },
+          {
+            key: 'emoji',
+            kind: 'emoji' as const,
+            label: t('agent.greeting.emojiLabel'),
+          },
+        ],
+        id: 'greeting-agent-identity',
+        mode: 'form',
+        node: 'agentIdentity',
+        prompt: t('agent.greeting.prompt'),
+        submitMode: 'message',
+      }),
+      [t],
+    );
+
     const itemContent = useCallback(
       (index: number, id: string) => {
         const isLatestItem = displayMessages.length === index + 1;
+
+        const effectiveQuestion =
+          isGreetingState && !visibleQuestion ? presetGreetingQuestion : visibleQuestion;
+
         const endRender =
-          id === lastAssistantMessageId && visibleQuestion ? (
-            <div className={styles.inlineQuestion}>
+          id === lastAssistantMessageId && effectiveQuestion ? (
+            <div className={staticStyle.inlineQuestion}>
               <QuestionRenderer
-                currentQuestion={visibleQuestion}
+                currentQuestion={effectiveQuestion}
                 onDismissNode={handleDismissNode}
               />
             </div>
           ) : undefined;
+
+        if (isGreetingState && index === 0) {
+          const message = displayMessages[0];
+          return (
+            <Flexbox align={'center'} justify={'center'} style={{ flex: 1, minHeight: '100%' }}>
+              <Flexbox className={staticStyle.greetingWrap} gap={16}>
+                <Flexbox horizontal align={'flex-start'} gap={12}>
+                  <Avatar
+                    avatar={agentMeta.avatar}
+                    background={agentMeta.backgroundColor}
+                    className={staticStyle.greetingAvatar}
+                    shape={'square'}
+                    size={36}
+                  />
+                  <Flexbox gap={4}>
+                    <Text style={{ fontSize: 12, fontWeight: 500 }} type={'secondary'}>
+                      {agentMeta.title}
+                    </Text>
+                    <Markdown className={staticStyle.greetingText} variant={'chat'}>
+                      {message.content}
+                    </Markdown>
+                  </Flexbox>
+                </Flexbox>
+                {endRender && (
+                  <>
+                    <Divider className={staticStyle.greetingDivider} />
+                    {endRender}
+                  </>
+                )}
+              </Flexbox>
+            </Flexbox>
+          );
+        }
 
         return (
           <MessageItem endRender={endRender} id={id} index={index} isLatestItem={isLatestItem} />
         );
       },
       [
-        displayMessages.length,
+        agentMeta,
+        displayMessages,
         handleDismissNode,
+        isGreetingState,
         lastAssistantMessageId,
-        styles.inlineQuestion,
+        presetGreetingQuestion,
         visibleQuestion,
       ],
     );
@@ -117,7 +185,7 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
         </Flexbox>
 
         {!readOnly && (
-          <Flexbox className={styles.composerZone} paddingInline={8}>
+          <Flexbox className={staticStyle.composerZone} paddingInline={8}>
             <ChatInput
               allowExpand={false}
               leftActions={chatInputLeftActions}

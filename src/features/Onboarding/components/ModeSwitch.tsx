@@ -31,11 +31,20 @@ const useStyles = createStyles(({ css, token }) => ({
 
     padding-block: 8px;
     padding-inline: 12px;
-    border: 1px solid ${token.colorBorderSecondary};
+    border: 1px solid color-mix(in srgb, ${token.colorBorderSecondary} 60%, transparent);
     border-radius: 999px;
 
-    background: ${token.colorBgElevated};
-    backdrop-filter: blur(12px);
+    background: color-mix(in srgb, ${token.colorBgElevated} 75%, transparent);
+    backdrop-filter: blur(16px) saturate(1.2);
+    box-shadow: ${token.boxShadowSecondary};
+  `,
+  segmentedGlass: css`
+    padding: 4px;
+    border: 1px solid color-mix(in srgb, ${token.colorBorderSecondary} 60%, transparent);
+    border-radius: 999px;
+
+    background: color-mix(in srgb, ${token.colorBgElevated} 75%, transparent);
+    backdrop-filter: blur(16px) saturate(1.2);
     box-shadow: ${token.boxShadowSecondary};
   `,
 }));
@@ -78,8 +87,8 @@ const ModeSwitch = memo<ModeSwitchProps>(({ actions, className, showLabel = fals
 
   return (
     <Flexbox
-      style={style}
       className={cx(styles.anchor, showLabel && styles.anchorWithLabel, className)}
+      style={style}
     >
       {showLabel && (
         <Text style={{ paddingInline: 4 }} type={'secondary'}>
@@ -92,7 +101,7 @@ const ModeSwitch = memo<ModeSwitchProps>(({ actions, className, showLabel = fals
           {segmented}
         </div>
       ) : (
-        segmented
+        <div className={styles.segmentedGlass}>{segmented}</div>
       )}
     </Flexbox>
   );

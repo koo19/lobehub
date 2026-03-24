@@ -116,7 +116,7 @@ const AgentOnboardingPage = memo(() => {
     <OnboardingContainer>
       <Flexbox
         gap={24}
-        style={{ height: '100%', maxWidth: 720, position: 'relative', width: '100%' }}
+        style={{ height: '100%', maxWidth: 840, position: 'relative', width: '100%' }}
       >
         <Flexbox flex={1} gap={16} style={{ minHeight: 0 }}>
           <OnboardingConversationProvider
@@ -131,10 +131,10 @@ const AgentOnboardingPage = memo(() => {
           >
             <ErrorBoundary FallbackComponent={() => null}>
               <AgentOnboardingConversation
+                readOnly={viewingHistoricalTopic}
                 currentQuestion={
                   viewingHistoricalTopic ? undefined : currentContext.currentQuestion
                 }
-                readOnly={viewingHistoricalTopic}
               />
             </ErrorBoundary>
           </OnboardingConversationProvider>
