@@ -5,9 +5,9 @@ import {
   type SSOProvider,
   type UserAgentOnboarding,
   type UserAgentOnboardingDraft,
-  type UserAgentOnboardingInteractionHint,
-  type UserAgentOnboardingInteractionHintDraft,
   type UserAgentOnboardingNode,
+  type UserAgentOnboardingQuestion,
+  type UserAgentOnboardingQuestionDraft,
   type UserAgentOnboardingUpdate,
   type UserGuide,
   type UserInitializationState,
@@ -33,55 +33,55 @@ export class UserService {
     return lambdaClient.user.getUserSSOProviders.query();
   };
 
-  getOrCreateAgentOnboardingContext = async (): Promise<{
+  getOrCreateOnboardingState = async (): Promise<{
     agentId: string;
     agentOnboarding: UserAgentOnboarding;
     context: {
       activeNode?: UserAgentOnboardingNode;
+      activeNodeDraftState?: {
+        missingFields?: string[];
+        status: 'complete' | 'empty' | 'partial';
+      };
       committed: Record<string, unknown>;
       completedNodes: UserAgentOnboardingNode[];
+      currentQuestion?: UserAgentOnboardingQuestion;
       draft: UserAgentOnboardingDraft;
       finishedAt?: string;
-      interactionHints: UserAgentOnboardingInteractionHint[];
-      interactionPolicy: {
-        needsRefresh: boolean;
-        reason?: string;
-      };
       topicId?: string;
       version: number;
     };
     topicId: string;
   }> => {
-    return lambdaClient.user.getOrCreateAgentOnboardingContext.query();
+    return lambdaClient.user.getOrCreateOnboardingState.query();
   };
 
-  getAgentOnboardingContext = async () => {
-    return lambdaClient.user.getAgentOnboardingContext.query();
+  getOnboardingState = async () => {
+    return lambdaClient.user.getOnboardingState.query();
   };
 
-  proposeAgentOnboardingPatch = async (params: { updates: UserAgentOnboardingUpdate[] }) => {
-    return lambdaClient.user.proposeAgentOnboardingPatch.mutate(
-      params as Parameters<typeof lambdaClient.user.proposeAgentOnboardingPatch.mutate>[0],
+  saveOnboardingAnswer = async (params: { updates: UserAgentOnboardingUpdate[] }) => {
+    return lambdaClient.user.saveOnboardingAnswer.mutate(
+      params as Parameters<typeof lambdaClient.user.saveOnboardingAnswer.mutate>[0],
     );
   };
 
-  proposeAgentOnboardingInteractions = async (params: {
-    hints: UserAgentOnboardingInteractionHintDraft[];
+  askOnboardingQuestion = async (params: {
     node: UserAgentOnboardingNode;
+    question: UserAgentOnboardingQuestionDraft;
   }) => {
-    return lambdaClient.user.proposeAgentOnboardingInteractions.mutate(params);
+    return lambdaClient.user.askOnboardingQuestion.mutate(params);
   };
 
-  commitAgentOnboardingNode = async (node: UserAgentOnboardingNode) => {
-    return lambdaClient.user.commitAgentOnboardingNode.mutate({ node });
+  completeOnboardingStep = async (node: UserAgentOnboardingNode) => {
+    return lambdaClient.user.completeOnboardingStep.mutate({ node });
   };
 
-  redirectAgentOnboardingOfftopic = async (reason?: string) => {
-    return lambdaClient.user.redirectAgentOnboardingOfftopic.mutate({ reason });
+  returnToOnboarding = async (reason?: string) => {
+    return lambdaClient.user.returnToOnboarding.mutate({ reason });
   };
 
-  finishAgentOnboarding = async () => {
-    return lambdaClient.user.finishAgentOnboarding.mutate();
+  finishOnboarding = async () => {
+    return lambdaClient.user.finishOnboarding.mutate();
   };
 
   makeUserOnboarded = async () => {

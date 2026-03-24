@@ -16,19 +16,20 @@ vi.mock('@/features/Conversation', () => ({
   ChatList: ({ welcome }: { welcome?: any }) => <div data-testid="chat-list">{welcome}</div>,
 }));
 
-vi.mock('./InteractionHintRenderer', () => ({
+vi.mock('./QuestionRenderer', () => ({
   default: ({
-    interactionHints,
+    currentQuestion,
     onDismissNode,
   }: {
-    interactionHints?: Array<{ id: string; node?: string }>;
+    currentQuestion?: { id: string; node?: string; prompt?: string };
     onDismissNode?: (node: string) => void;
   }) => (
     <div data-testid="structured-actions">
-      <div>{interactionHints?.map((hint) => hint.id).join(',')}</div>
-      <div>{interactionHints?.[0]?.node}</div>
-      {interactionHints?.[0] && (
-        <button onClick={() => onDismissNode?.(interactionHints[0].node!)}>dismiss</button>
+      <div>{currentQuestion?.id}</div>
+      <div>{currentQuestion?.node}</div>
+      <div>{currentQuestion?.prompt}</div>
+      {currentQuestion && (
+        <button onClick={() => onDismissNode?.(currentQuestion.node!)}>dismiss</button>
       )}
     </div>
   ),
@@ -42,13 +43,14 @@ describe('AgentOnboardingConversation', () => {
   it('renders structured actions and disables expand + runtime config in chat input', () => {
     render(
       <AgentOnboardingConversation
-        interactionHints={[
+        currentQuestion={
           {
-            id: 'response-language-select',
-            kind: 'select',
+            id: 'response-language-question',
+            mode: 'select',
             node: 'responseLanguage',
-          } as any,
-        ]}
+            prompt: '你希望我默认用什么语言回复你？',
+          } as any
+        }
       />,
     );
 
@@ -64,26 +66,36 @@ describe('AgentOnboardingConversation', () => {
     );
   });
 
-  it('hides the current interaction hint after it is dismissed locally', () => {
+  it('passes the current question to the renderer', () => {
     render(
       <AgentOnboardingConversation
-        interactionHints={[
+        currentQuestion={
           {
-            id: 'agent-identity-form',
-            kind: 'form',
+            id: 'agent-identity-question',
+            mode: 'form',
             node: 'agentIdentity',
-          } as any,
-          {
-            id: 'agent-identity-presets',
-            kind: 'button_group',
-            node: 'agentIdentity',
-          } as any,
-        ]}
+            prompt: '先把我定下来吧。',
+          } as any
+        }
       />,
     );
 
-    expect(screen.getByTestId('structured-actions')).toHaveTextContent(
-      'agent-identity-form,agent-identity-presets',
+    expect(screen.getByTestId('structured-actions')).toHaveTextContent('agent-identity-question');
+    expect(screen.getByTestId('structured-actions')).toHaveTextContent('先把我定下来吧。');
+  });
+
+  it('hides the current question after it is dismissed locally', () => {
+    render(
+      <AgentOnboardingConversation
+        currentQuestion={
+          {
+            id: 'agent-identity-question',
+            mode: 'form',
+            node: 'agentIdentity',
+            prompt: '先把我定下来吧。',
+          } as any
+        }
+      />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'dismiss' }));

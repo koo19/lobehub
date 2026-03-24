@@ -12,7 +12,7 @@ describe('resolveAgentOnboardingContext', () => {
           version: 1,
         },
         context: {
-          interactionHints: [],
+          currentQuestion: undefined,
         },
         topicId: 'topic-bootstrap',
       },
@@ -24,7 +24,7 @@ describe('resolveAgentOnboardingContext', () => {
     });
 
     expect(result).toEqual({
-      interactionHints: [],
+      currentQuestion: undefined,
       topicId: 'topic-store',
     });
   });
@@ -38,7 +38,7 @@ describe('resolveAgentOnboardingContext', () => {
           version: 1,
         },
         context: {
-          interactionHints: [],
+          currentQuestion: undefined,
         },
         topicId: 'topic-bootstrap',
       },
@@ -49,7 +49,7 @@ describe('resolveAgentOnboardingContext', () => {
     });
 
     expect(result).toEqual({
-      interactionHints: [],
+      currentQuestion: undefined,
       topicId: 'topic-bootstrap',
     });
   });

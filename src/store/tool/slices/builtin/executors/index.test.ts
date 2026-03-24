@@ -8,22 +8,18 @@ import { getApiNamesForIdentifier, hasExecutor } from './index';
 
 describe('builtin executor registry', () => {
   it('registers web onboarding executor APIs', () => {
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.getOnboardingContext)).toBe(
+    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.getOnboardingState)).toBe(
       true,
     );
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.proposeOnboardingPatch)).toBe(
+    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.saveAnswer)).toBe(true);
+    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.askUserQuestion)).toBe(true);
+    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.completeCurrentStep)).toBe(
       true,
     );
-    expect(
-      hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.proposeOnboardingInteractions),
-    ).toBe(true);
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.commitOnboardingNode)).toBe(
+    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.returnToOnboarding)).toBe(
       true,
     );
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.redirectOfftopic)).toBe(true);
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.finishAgentOnboarding)).toBe(
-      true,
-    );
+    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.finishOnboarding)).toBe(true);
     expect(getApiNamesForIdentifier(WebOnboardingIdentifier)).toEqual(
       Object.values(WebOnboardingApiName),
     );

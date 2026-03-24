@@ -20,33 +20,33 @@ export const webOnboardingRuntime: ServerRuntimeRegistration = {
     for (const api of WebOnboardingManifest.api) {
       proxy[api.name] = async (args: Record<string, unknown>) => {
         switch (api.name) {
-          case 'getOnboardingContext': {
-            const result = await service.getContext();
+          case 'getOnboardingState': {
+            const result = await service.getState();
 
             return { content: JSON.stringify(result, null, 2), state: result, success: true };
           }
-          case 'proposeOnboardingPatch': {
-            const result = await service.proposePatch(args as any);
+          case 'saveAnswer': {
+            const result = await service.saveAnswer(args as any);
 
             return createWebOnboardingToolResult(result);
           }
-          case 'proposeOnboardingInteractions': {
-            const result = await service.proposeInteractions(args as any);
+          case 'askUserQuestion': {
+            const result = await service.askQuestion(args as any);
 
             return createWebOnboardingToolResult(result);
           }
-          case 'commitOnboardingNode': {
-            const result = await service.commitNode(args.node as any);
+          case 'completeCurrentStep': {
+            const result = await service.completeCurrentStep(args.node as any);
 
             return createWebOnboardingToolResult(result);
           }
-          case 'redirectOfftopic': {
-            const result = await service.redirectOfftopic(args.reason as string | undefined);
+          case 'returnToOnboarding': {
+            const result = await service.returnToOnboarding(args.reason as string | undefined);
 
             return createWebOnboardingToolResult(result);
           }
-          case 'finishAgentOnboarding': {
-            const result = await service.finish();
+          case 'finishOnboarding': {
+            const result = await service.finishOnboarding();
 
             return createWebOnboardingToolResult(result);
           }

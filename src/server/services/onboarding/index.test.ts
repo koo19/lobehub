@@ -97,7 +97,7 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const context = await service.getContext();
+    const context = await service.getState();
 
     expect(context.activeNode).toBe('agentIdentity');
     expect(context.completedNodes).toEqual([]);
@@ -112,7 +112,7 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.proposePatch({
+    const result = await service.saveAnswer({
       updates: [
         {
           node: 'agentIdentity',
@@ -138,7 +138,7 @@ describe('OnboardingService', () => {
     expect(persistedUserState.agentOnboarding.completedNodes).toEqual(['agentIdentity']);
   });
 
-  it('preserves malformed flat patch fields so the service can return a structured failure', () => {
+  it('preserves node-scoped flat patch fields in the update schema', () => {
     const parsed = UserAgentOnboardingUpdateSchema.parse({
       node: 'agentIdentity',
       patch: {
@@ -157,7 +157,7 @@ describe('OnboardingService', () => {
     });
   });
 
-  it('returns a structured invalid patch shape error for flat agent identity payloads', async () => {
+  it('accepts flat agent identity payloads scoped by node', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
@@ -165,7 +165,7 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.proposePatch({
+    const result = await service.saveAnswer({
       updates: [
         {
           node: 'agentIdentity',
@@ -179,22 +179,45 @@ describe('OnboardingService', () => {
       ],
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toEqual({
-      code: 'INVALID_PATCH_SHAPE',
-      expectedPatchPath: 'patch.agentIdentity',
-      message:
-        'Invalid patch shape for "agentIdentity". Put these fields under patch.agentIdentity instead of sending them at the top level of patch.',
-      receivedPatch: {
-        emoji: '🐍',
-        name: '小齐',
-        nature: 'Sharp, playful AI sidekick with insights',
-        vibe: 'Serpent-like: sharp, witty, and insightful',
-      },
-      receivedPatchKeys: ['emoji', 'name', 'nature', 'vibe'],
+    expect(result.success).toBe(true);
+    expect(persistedUserState.agentOnboarding.agentIdentity).toEqual({
+      emoji: '🐍',
+      name: '小齐',
+      nature: 'Sharp, playful AI sidekick with insights',
+      vibe: 'Serpent-like: sharp, witty, and insightful',
     });
-    expect(result.content).toContain('patch.agentIdentity');
-    expect(persistedUserState.agentOnboarding.agentIdentity).toBeUndefined();
+    expect(persistedUserState.agentOnboarding.completedNodes).toEqual(['agentIdentity']);
+  });
+
+  it('stores partial agent identity drafts without committing the node', async () => {
+    persistedUserState.agentOnboarding = {
+      completedNodes: [],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    const service = new OnboardingService(mockDb, userId);
+    const result = await service.saveAnswer({
+      updates: [
+        {
+          node: 'agentIdentity',
+          patch: {
+            vibe: '活泼',
+          },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.activeNode).toBe('agentIdentity');
+    expect(result.activeNodeDraftState).toEqual({
+      missingFields: ['emoji', 'name', 'nature'],
+      status: 'partial',
+    });
+    expect(result.content).toContain('Saved a partial draft');
+    expect(persistedUserState.agentOnboarding.draft.agentIdentity).toEqual({
+      vibe: '活泼',
+    });
     expect(persistedUserState.agentOnboarding.completedNodes).toEqual([]);
   });
 
@@ -206,7 +229,7 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.proposePatch({
+    const result = await service.saveAnswer({
       updates: [
         {
           node: 'userIdentity',
@@ -228,7 +251,7 @@ describe('OnboardingService', () => {
     expect(result.activeNode).toBe('agentIdentity');
     expect(result.requestedNode).toBe('userIdentity');
     expect(result.instruction).toContain('Do not call userIdentity yet');
-    expect(result.interactionHints?.[0]?.node).toBe('agentIdentity');
+    expect(result.currentQuestion).toBeUndefined();
     expect(result.mismatch).toBe(true);
     expect(result.savedDraftFields).toEqual(['userIdentity']);
     expect(persistedUserState.agentOnboarding.draft.userIdentity).toEqual({
@@ -239,7 +262,7 @@ describe('OnboardingService', () => {
     });
   });
 
-  it('builds interaction hints from onboarding state instead of the legacy currentNode field', async () => {
+  it('does not derive a current question from onboarding state without a stored question surface', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       currentNode: 'agentIdentity',
@@ -250,16 +273,13 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const context = await service.getContext();
+    const context = await service.getState();
 
     expect(context.activeNode).toBe('agentIdentity');
-    expect(context.interactionHints?.map((hint) => hint.node)).toEqual([
-      'agentIdentity',
-      'agentIdentity',
-    ]);
+    expect(context.currentQuestion).toBeUndefined();
   });
 
-  it('derives later structured hints from completed nodes without reading legacy currentNode', async () => {
+  it('does not derive later questions from completed nodes without a stored question surface', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: ['agentIdentity', 'userIdentity', 'workStyle', 'workContext', 'painPoints'],
       currentNode: 'agentIdentity',
@@ -270,14 +290,13 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const context = await service.getContext();
+    const context = await service.getState();
 
     expect(context.activeNode).toBe('responseLanguage');
-    expect(context.interactionHints?.map((hint) => hint.node)).toEqual(['responseLanguage']);
-    expect(context.interactionHints?.[0]?.fields?.[0]?.value).toBe('zh-CN');
+    expect(context.currentQuestion).toBeUndefined();
   });
 
-  it('marks weak fallback interaction hints as needing refresh', async () => {
+  it('returns no current question when the active node has no stored question surface', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: ['agentIdentity'],
       draft: {},
@@ -285,15 +304,10 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const context = await service.getContext();
+    const context = await service.getState();
 
     expect(context.activeNode).toBe('userIdentity');
-    expect(context.interactionHints?.[0]?.kind).toBe('composer_prefill');
-    expect(context.interactionPolicy).toEqual({
-      needsRefresh: true,
-      reason:
-        'Current node "userIdentity" only has weak fallback interaction hints. Generate a better interaction surface before your next visible reply.',
-    });
+    expect(context.currentQuestion).toBeUndefined();
   });
 
   it('supports batch updates across consecutive onboarding nodes', async () => {
@@ -304,7 +318,7 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.proposePatch({
+    const result = await service.saveAnswer({
       updates: [
         {
           node: 'agentIdentity',
@@ -334,11 +348,12 @@ describe('OnboardingService', () => {
     expect(result.success).toBe(true);
     expect(result.processedNodes).toEqual(['agentIdentity', 'userIdentity']);
     expect(result.activeNode).toBe('workStyle');
+    expect(result.currentQuestion).toBeUndefined();
     expect(persistedUserState.agentOnboarding.agentIdentity?.name).toBe('小七');
     expect(persistedUserState.agentOnboarding.profile?.identity?.name).toBe('Ada');
   });
 
-  it('stores AI-generated interaction hints for the active onboarding node', async () => {
+  it('stores the current question for the active onboarding node', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
@@ -346,70 +361,64 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.proposeInteractions({
-      hints: [
-        {
-          actions: [
-            {
-              id: 'identity-default',
-              label: 'Use a warm default',
-              payload: {
-                kind: 'message',
-                message: 'Call yourself Xiao Qi, warm and curious, emoji 🐦.',
-              },
-            },
-          ],
-          description: 'A tighter preset generated by the model.',
-          id: 'agent-identity-ai-preset',
-          kind: 'button_group',
-          submitMode: 'message',
-          title: 'AI-generated preset',
-        },
-      ],
+    const result = await service.askQuestion({
       node: 'agentIdentity',
+      question: {
+        choices: [
+          {
+            id: 'identity-default',
+            label: 'Use a warm default',
+            payload: {
+              kind: 'message',
+              message: 'Call yourself Xiao Qi, warm and curious, emoji 🐦.',
+            },
+          },
+        ],
+        description: 'A tighter preset generated by the model.',
+        id: 'agent-identity-ai-preset',
+        mode: 'button_group',
+        prompt: 'AI-generated preset',
+      },
     });
 
     expect(result.success).toBe(true);
-    expect(result.storedHintIds).toEqual(['agent-identity-ai-preset']);
-    expect(result.interactionHints).toEqual([
+    expect(result.storedQuestionId).toBe('agent-identity-ai-preset');
+    expect(result.currentQuestion).toEqual(
       expect.objectContaining({
         id: 'agent-identity-ai-preset',
-        kind: 'button_group',
+        mode: 'button_group',
         node: 'agentIdentity',
       }),
-    ]);
-    expect(persistedUserState.agentOnboarding.interactionSurface).toEqual({
-      hints: [
-        expect.objectContaining({
-          id: 'agent-identity-ai-preset',
-          node: 'agentIdentity',
-        }),
-      ],
+    );
+    expect(persistedUserState.agentOnboarding.questionSurface).toEqual({
       node: 'agentIdentity',
+      question: expect.objectContaining({
+        id: 'agent-identity-ai-preset',
+        node: 'agentIdentity',
+      }),
       updatedAt: expect.any(String),
     });
   });
 
-  it('clears AI-generated interaction hints after the onboarding node advances', async () => {
+  it('clears the current question after the onboarding node advances', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
       draft: {},
-      interactionSurface: {
-        hints: [
-          {
-            id: 'agent-identity-ai-preset',
-            kind: 'button_group',
-            node: 'agentIdentity',
-          },
-        ],
+      questionSurface: {
         node: 'agentIdentity',
+        question: {
+          id: 'agent-identity-ai-preset',
+          mode: 'button_group',
+          node: 'agentIdentity',
+          prompt: 'Preset',
+        },
         updatedAt: '2026-03-24T00:00:00.000Z',
       },
       version: CURRENT_ONBOARDING_VERSION,
     };
 
     const service = new OnboardingService(mockDb, userId);
-    await service.proposePatch({
+    await service.saveAnswer({
       updates: [
         {
           node: 'agentIdentity',
@@ -425,11 +434,11 @@ describe('OnboardingService', () => {
       ],
     });
 
-    const context = await service.getContext();
+    const context = await service.getState();
 
     expect(context.activeNode).toBe('userIdentity');
-    expect(persistedUserState.agentOnboarding.interactionSurface).toBeUndefined();
-    expect(context.interactionHints?.[0]?.node).toBe('userIdentity');
+    expect(persistedUserState.agentOnboarding.questionSurface).toBeUndefined();
+    expect(context.currentQuestion).toBeUndefined();
   });
 
   it('surfaces a committed profile across the new onboarding dimensions', async () => {
@@ -483,10 +492,10 @@ describe('OnboardingService', () => {
     persistedUserState.interests = ['product strategy', 'data platforms'];
 
     const service = new OnboardingService(mockDb, userId);
-    const context = await service.getContext();
+    const context = await service.getState();
 
     expect(context.committed.agentIdentity?.name).toBe('小七');
-    expect(context.interactionHints?.[0]?.kind).toBe('select');
+    expect(context.currentQuestion).toBeUndefined();
     expect(context.committed.profile?.identity?.professionalRole).toBe('Product Manager');
     expect(context.committed.profile?.workStyle?.decisionMaking).toBe('data-informed but fast');
     expect(context.committed.profile?.workContext?.tools).toEqual(['Notion', 'Figma', 'SQL']);
@@ -510,7 +519,7 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.finish();
+    const result = await service.finishOnboarding();
 
     expect(result.success).toBe(true);
     expect(persistedUserState.agentOnboarding.finishedAt).toBeTruthy();
@@ -525,7 +534,7 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.getOrCreateContext();
+    const result = await service.getOrCreateState();
 
     expect(result.topicId).toBe('topic-1');
     expect(mockTopicModel.create).toHaveBeenCalledWith({

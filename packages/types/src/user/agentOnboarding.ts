@@ -15,7 +15,12 @@ export type UserAgentOnboardingNode = (typeof AGENT_ONBOARDING_NODES)[number];
 
 export interface UserAgentOnboardingUpdate {
   node: UserAgentOnboardingNode;
-  patch: UserAgentOnboardingDraft;
+  patch: Record<string, unknown>;
+}
+
+export interface UserOnboardingDefaultModel {
+  model: string;
+  provider: string;
 }
 
 export interface UserOnboardingAgentIdentity {
@@ -67,77 +72,65 @@ export interface UserOnboardingProfile {
   workStyle?: UserOnboardingDimensionWorkStyle;
 }
 
-export interface UserAgentOnboardingInteractionFieldOption {
+export interface UserAgentOnboardingQuestionFieldOption {
   label: string;
   value: string;
 }
 
-export interface UserAgentOnboardingInteractionField {
+export interface UserAgentOnboardingQuestionField {
   key: string;
   kind: 'emoji' | 'multiselect' | 'select' | 'text' | 'textarea';
   label: string;
-  options?: UserAgentOnboardingInteractionFieldOption[];
+  options?: UserAgentOnboardingQuestionFieldOption[];
   placeholder?: string;
   required?: boolean;
   value?: string | string[];
 }
 
-export interface UserAgentOnboardingInteractionActionPayload {
+export interface UserAgentOnboardingQuestionChoicePayload {
   kind: 'message' | 'patch';
   message?: string;
-  patch?: UserAgentOnboardingDraft;
+  patch?: Record<string, unknown>;
   targetNode?: UserAgentOnboardingNode;
 }
 
-export interface UserAgentOnboardingInteractionAction {
+export interface UserAgentOnboardingQuestionChoice {
   id: string;
   label: string;
-  payload?: UserAgentOnboardingInteractionActionPayload;
+  payload?: UserAgentOnboardingQuestionChoicePayload;
   style?: 'danger' | 'default' | 'primary';
 }
 
-export interface UserAgentOnboardingInteractionHintDraft {
-  actions?: UserAgentOnboardingInteractionAction[];
+export interface UserAgentOnboardingQuestionDraft {
+  choices?: UserAgentOnboardingQuestionChoice[];
   description?: string;
-  fields?: UserAgentOnboardingInteractionField[];
+  fields?: UserAgentOnboardingQuestionField[];
   id: string;
-  kind: 'button_group' | 'composer_prefill' | 'form' | 'info' | 'select';
   metadata?: Record<string, unknown>;
+  mode: 'button_group' | 'composer_prefill' | 'form' | 'info' | 'select';
   priority?: 'primary' | 'secondary';
+  prompt: string;
   submitMode?: 'message' | 'tool';
-  title?: string;
 }
 
-export interface UserAgentOnboardingInteractionHint {
-  actions?: UserAgentOnboardingInteractionAction[];
-  description?: string;
-  fields?: UserAgentOnboardingInteractionField[];
-  id: string;
-  kind: 'button_group' | 'composer_prefill' | 'form' | 'info' | 'select';
-  metadata?: Record<string, unknown>;
+export interface UserAgentOnboardingQuestion extends UserAgentOnboardingQuestionDraft {
   node: UserAgentOnboardingNode;
-  priority?: 'primary' | 'secondary';
-  submitMode?: 'message' | 'tool';
-  title?: string;
 }
 
-export interface UserAgentOnboardingInteractionSurface {
-  hints: UserAgentOnboardingInteractionHint[];
+export interface UserAgentOnboardingQuestionSurface {
   node: UserAgentOnboardingNode;
+  question: UserAgentOnboardingQuestion;
   updatedAt: string;
 }
 
 export interface UserAgentOnboardingDraft {
-  agentIdentity?: UserOnboardingAgentIdentity;
-  defaultModel?: {
-    model: string;
-    provider: string;
-  };
-  painPoints?: UserOnboardingDimensionPainPoints;
+  agentIdentity?: Partial<UserOnboardingAgentIdentity>;
+  defaultModel?: Partial<UserOnboardingDefaultModel>;
+  painPoints?: Partial<UserOnboardingDimensionPainPoints>;
   responseLanguage?: string;
-  userIdentity?: UserOnboardingDimensionIdentity;
-  workContext?: UserOnboardingDimensionWorkContext;
-  workStyle?: UserOnboardingDimensionWorkStyle;
+  userIdentity?: Partial<UserOnboardingDimensionIdentity>;
+  workContext?: Partial<UserOnboardingDimensionWorkContext>;
+  workStyle?: Partial<UserOnboardingDimensionWorkStyle>;
 }
 
 export interface UserAgentOnboarding {
@@ -146,8 +139,8 @@ export interface UserAgentOnboarding {
   completedNodes?: UserAgentOnboardingNode[];
   draft?: UserAgentOnboardingDraft;
   finishedAt?: string;
-  interactionSurface?: UserAgentOnboardingInteractionSurface;
   profile?: UserOnboardingProfile;
+  questionSurface?: UserAgentOnboardingQuestionSurface;
   version: number;
 }
 
@@ -155,8 +148,6 @@ export const UserAgentOnboardingNodeSchema = z.enum(AGENT_ONBOARDING_NODES);
 
 export const UserAgentOnboardingUpdateSchema = z.object({
   node: UserAgentOnboardingNodeSchema,
-  // Keep unknown keys so the service can detect malformed node-scoped payloads
-  // and return a structured error instead of silently receiving an empty patch.
   patch: z.object({}).passthrough(),
 });
 
@@ -200,71 +191,71 @@ const UserOnboardingDimensionPainPointsSchema = z.object({
   summary: z.string(),
 });
 
-const UserAgentOnboardingInteractionFieldOptionSchema = z.object({
+const UserAgentOnboardingQuestionFieldOptionSchema = z.object({
   label: z.string(),
   value: z.string(),
 });
 
-const UserAgentOnboardingInteractionFieldSchema = z.object({
+const UserAgentOnboardingQuestionFieldSchema = z.object({
   key: z.string(),
   kind: z.enum(['emoji', 'multiselect', 'select', 'text', 'textarea']),
   label: z.string(),
-  options: z.array(UserAgentOnboardingInteractionFieldOptionSchema).optional(),
+  options: z.array(UserAgentOnboardingQuestionFieldOptionSchema).optional(),
   placeholder: z.string().optional(),
   required: z.boolean().optional(),
   value: z.union([z.string(), z.array(z.string())]).optional(),
 });
 
-const UserAgentOnboardingInteractionActionPayloadSchema = z.object({
+const UserAgentOnboardingQuestionChoicePayloadSchema = z.object({
   kind: z.enum(['message', 'patch']),
   message: z.string().optional(),
-  patch: z.lazy(() => UserAgentOnboardingDraftSchema).optional(),
+  patch: z.record(z.string(), z.unknown()).optional(),
   targetNode: UserAgentOnboardingNodeSchema.optional(),
 });
 
-const UserAgentOnboardingInteractionActionSchema = z.object({
+const UserAgentOnboardingQuestionChoiceSchema = z.object({
   id: z.string(),
   label: z.string(),
-  payload: UserAgentOnboardingInteractionActionPayloadSchema.optional(),
+  payload: UserAgentOnboardingQuestionChoicePayloadSchema.optional(),
   style: z.enum(['danger', 'default', 'primary']).optional(),
 });
 
-export const UserAgentOnboardingInteractionHintDraftSchema = z.object({
-  actions: z.array(UserAgentOnboardingInteractionActionSchema).optional(),
+export const UserAgentOnboardingQuestionDraftSchema = z.object({
+  choices: z.array(UserAgentOnboardingQuestionChoiceSchema).optional(),
   description: z.string().optional(),
-  fields: z.array(UserAgentOnboardingInteractionFieldSchema).optional(),
+  fields: z.array(UserAgentOnboardingQuestionFieldSchema).optional(),
   id: z.string(),
-  kind: z.enum(['button_group', 'composer_prefill', 'form', 'info', 'select']),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  mode: z.enum(['button_group', 'composer_prefill', 'form', 'info', 'select']),
   priority: z.enum(['primary', 'secondary']).optional(),
+  prompt: z.string(),
   submitMode: z.enum(['message', 'tool']).optional(),
-  title: z.string().optional(),
 });
 
-const UserAgentOnboardingInteractionHintSchema =
-  UserAgentOnboardingInteractionHintDraftSchema.extend({
-    node: UserAgentOnboardingNodeSchema,
-  });
-
-const UserAgentOnboardingInteractionSurfaceSchema = z.object({
-  hints: z.array(UserAgentOnboardingInteractionHintSchema),
+const UserAgentOnboardingQuestionSchema = UserAgentOnboardingQuestionDraftSchema.extend({
   node: UserAgentOnboardingNodeSchema,
-  updatedAt: z.string(),
 });
 
 export const UserAgentOnboardingDraftSchema = z.object({
-  agentIdentity: UserOnboardingAgentIdentitySchema.optional(),
+  agentIdentity: UserOnboardingAgentIdentitySchema.partial().optional(),
   defaultModel: z
     .object({
       model: z.string(),
       provider: z.string(),
     })
+    .partial()
     .optional(),
-  painPoints: UserOnboardingDimensionPainPointsSchema.optional(),
+  painPoints: UserOnboardingDimensionPainPointsSchema.partial().optional(),
   responseLanguage: z.string().optional(),
-  userIdentity: UserOnboardingDimensionIdentitySchema.optional(),
-  workContext: UserOnboardingDimensionWorkContextSchema.optional(),
-  workStyle: UserOnboardingDimensionWorkStyleSchema.optional(),
+  userIdentity: UserOnboardingDimensionIdentitySchema.partial().optional(),
+  workContext: UserOnboardingDimensionWorkContextSchema.partial().optional(),
+  workStyle: UserOnboardingDimensionWorkStyleSchema.partial().optional(),
+});
+
+const UserAgentOnboardingQuestionSurfaceSchema = z.object({
+  node: UserAgentOnboardingNodeSchema,
+  question: UserAgentOnboardingQuestionSchema,
+  updatedAt: z.string(),
 });
 
 export const UserAgentOnboardingSchema = z.object({
@@ -273,7 +264,6 @@ export const UserAgentOnboardingSchema = z.object({
   completedNodes: z.array(UserAgentOnboardingNodeSchema).optional(),
   draft: UserAgentOnboardingDraftSchema.optional(),
   finishedAt: z.string().optional(),
-  interactionSurface: UserAgentOnboardingInteractionSurfaceSchema.optional(),
   profile: z
     .object({
       currentFocus: z.string().optional(),
@@ -284,5 +274,6 @@ export const UserAgentOnboardingSchema = z.object({
       workStyle: UserOnboardingDimensionWorkStyleSchema.optional(),
     })
     .optional(),
+  questionSurface: UserAgentOnboardingQuestionSurfaceSchema.optional(),
   version: z.number(),
 });

@@ -44,4 +44,14 @@ describe('createWebOnboardingToolResult', () => {
     });
     expect(JSON.parse(result.content!)).toEqual(result.state);
   });
+
+  it('serializes successful onboarding actions as structured payload only', () => {
+    const result = createWebOnboardingToolResult({
+      content: 'Committed step "agentIdentity". Continue with "userIdentity".',
+      success: true,
+    });
+
+    expect(result.content).toBe(JSON.stringify(result.state, null, 2));
+    expect(result.content).not.toContain('toolDirective');
+  });
 });

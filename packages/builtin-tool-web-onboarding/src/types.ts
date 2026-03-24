@@ -1,10 +1,10 @@
 export const WebOnboardingIdentifier = 'lobe-web-onboarding';
 
 export const WebOnboardingApiName = {
-  commitOnboardingNode: 'commitOnboardingNode',
-  finishAgentOnboarding: 'finishAgentOnboarding',
-  getOnboardingContext: 'getOnboardingContext',
-  proposeOnboardingInteractions: 'proposeOnboardingInteractions',
-  proposeOnboardingPatch: 'proposeOnboardingPatch',
-  redirectOfftopic: 'redirectOfftopic',
+  askUserQuestion: 'askUserQuestion',
+  completeCurrentStep: 'completeCurrentStep',
+  finishOnboarding: 'finishOnboarding',
+  getOnboardingState: 'getOnboardingState',
+  returnToOnboarding: 'returnToOnboarding',
+  saveAnswer: 'saveAnswer',
 } as const;

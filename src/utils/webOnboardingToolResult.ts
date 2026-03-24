@@ -25,9 +25,10 @@ export const createWebOnboardingToolResult = <T extends WebOnboardingToolActionR
     isError,
     success: result.success,
   };
+  const content = JSON.stringify(payload, null, 2);
 
   return {
-    content: JSON.stringify(payload, null, 2),
+    content,
     ...(errorMessage ? { error: { body: result, message: errorMessage, type: errorType } } : {}),
     state: payload,
     success: result.success,

@@ -1,9 +1,9 @@
-import type { UserAgentOnboarding, UserAgentOnboardingInteractionHint } from '@/types/user';
+import type { UserAgentOnboarding, UserAgentOnboardingQuestion } from '@/types/user';
 
 export interface AgentOnboardingBootstrapContext {
   agentOnboarding: UserAgentOnboarding;
   context: {
-    interactionHints: UserAgentOnboardingInteractionHint[];
+    currentQuestion?: UserAgentOnboardingQuestion;
   };
   topicId: string;
 }
@@ -17,6 +17,6 @@ export const resolveAgentOnboardingContext = ({
   bootstrapContext,
   storedAgentOnboarding,
 }: ResolveAgentOnboardingContextParams) => ({
-  interactionHints: bootstrapContext?.context.interactionHints ?? [],
+  currentQuestion: bootstrapContext?.context.currentQuestion,
   topicId: storedAgentOnboarding?.activeTopicId ?? bootstrapContext?.topicId,
 });

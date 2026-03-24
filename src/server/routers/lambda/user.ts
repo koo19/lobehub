@@ -6,8 +6,8 @@ import {
 } from '@lobechat/types';
 import {
   Plans,
-  UserAgentOnboardingInteractionHintDraftSchema,
   UserAgentOnboardingNodeSchema,
+  UserAgentOnboardingQuestionDraftSchema,
   UserAgentOnboardingSchema,
   UserAgentOnboardingUpdateSchema,
   UserGuideSchema,
@@ -195,19 +195,19 @@ export const userRouter = router({
     return ctx.userModel.updateUser({ interests: input });
   }),
 
-  getOrCreateAgentOnboardingContext: userProcedure.query(async ({ ctx }) => {
+  getOrCreateOnboardingState: userProcedure.query(async ({ ctx }) => {
     const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-    return onboardingService.getOrCreateContext();
+    return onboardingService.getOrCreateState();
   }),
 
-  getAgentOnboardingContext: userProcedure.query(async ({ ctx }) => {
+  getOnboardingState: userProcedure.query(async ({ ctx }) => {
     const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-    return onboardingService.getContext();
+    return onboardingService.getState();
   }),
 
-  proposeAgentOnboardingPatch: userProcedure
+  saveOnboardingAnswer: userProcedure
     .input(
       z.object({
         updates: z.array(UserAgentOnboardingUpdateSchema).min(1),
@@ -216,35 +216,35 @@ export const userRouter = router({
     .mutation(async ({ ctx, input }) => {
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-      return onboardingService.proposePatch(input);
+      return onboardingService.saveAnswer(input);
     }),
 
-  proposeAgentOnboardingInteractions: userProcedure
+  askOnboardingQuestion: userProcedure
     .input(
       z.object({
-        hints: z.array(UserAgentOnboardingInteractionHintDraftSchema),
+        node: UserAgentOnboardingNodeSchema,
+        question: UserAgentOnboardingQuestionDraftSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+
+      return onboardingService.askQuestion(input);
+    }),
+
+  completeOnboardingStep: userProcedure
+    .input(
+      z.object({
         node: UserAgentOnboardingNodeSchema,
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-      return onboardingService.proposeInteractions(input);
+      return onboardingService.completeCurrentStep(input.node);
     }),
 
-  commitAgentOnboardingNode: userProcedure
-    .input(
-      z.object({
-        node: UserAgentOnboardingNodeSchema,
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
-
-      return onboardingService.commitNode(input.node);
-    }),
-
-  redirectAgentOnboardingOfftopic: userProcedure
+  returnToOnboarding: userProcedure
     .input(
       z.object({
         reason: z.string().optional(),
@@ -253,13 +253,13 @@ export const userRouter = router({
     .mutation(async ({ ctx, input }) => {
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-      return onboardingService.redirectOfftopic(input.reason);
+      return onboardingService.returnToOnboarding(input.reason);
     }),
 
-  finishAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {
+  finishOnboarding: userProcedure.mutation(async ({ ctx }) => {
     const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-    return onboardingService.finish();
+    return onboardingService.finishOnboarding();
   }),
 
   resetAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {

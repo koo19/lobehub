@@ -36,7 +36,7 @@ const AgentOnboardingPage = memo(() => {
 
   const { data, error, isLoading, mutate } = useOnlyFetchOnceSWR(
     'agent-onboarding-bootstrap',
-    () => userService.getOrCreateAgentOnboardingContext(),
+    () => userService.getOrCreateOnboardingState(),
     {
       onSuccess: async () => {
         await refreshUserState();
@@ -72,7 +72,7 @@ const AgentOnboardingPage = memo(() => {
   }
 
   const syncOnboardingContext = async () => {
-    const nextContext = await userService.getOrCreateAgentOnboardingContext();
+    const nextContext = await userService.getOrCreateOnboardingState();
     await mutate(nextContext, { revalidate: false });
 
     return nextContext;
@@ -87,14 +87,6 @@ const AgentOnboardingPage = memo(() => {
     } finally {
       setIsResetting(false);
     }
-  };
-
-  const handleSubmitInteractionUpdates = async (
-    updates: Parameters<typeof userService.proposeAgentOnboardingPatch>[0]['updates'],
-  ) => {
-    await userService.proposeAgentOnboardingPatch({ updates });
-    await syncOnboardingContext();
-    await refreshUserState();
   };
 
   return (
@@ -115,10 +107,7 @@ const AgentOnboardingPage = memo(() => {
             }}
           >
             <ErrorBoundary FallbackComponent={() => null}>
-              <AgentOnboardingConversation
-                interactionHints={currentContext.interactionHints}
-                onSubmitInteractionUpdates={handleSubmitInteractionUpdates}
-              />
+              <AgentOnboardingConversation currentQuestion={currentContext.currentQuestion} />
             </ErrorBoundary>
           </OnboardingConversationProvider>
         </Flexbox>

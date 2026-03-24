@@ -1,9 +1,6 @@
 'use client';
 
-import {
-  type UserAgentOnboardingInteractionHint,
-  type UserAgentOnboardingUpdate,
-} from '@lobechat/types';
+import { type UserAgentOnboardingQuestion } from '@lobechat/types';
 import { Flexbox } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
@@ -12,7 +9,7 @@ import { type ActionKeys } from '@/features/ChatInput';
 import { ChatInput, ChatList } from '@/features/Conversation';
 import { isDev } from '@/utils/env';
 
-import InteractionHintRenderer from './InteractionHintRenderer';
+import QuestionRenderer from './QuestionRenderer';
 import Welcome from './Welcome';
 
 const useStyles = createStyles(({ css, token }) => ({
@@ -30,37 +27,37 @@ const useStyles = createStyles(({ css, token }) => ({
 }));
 
 interface AgentOnboardingConversationProps {
-  interactionHints?: UserAgentOnboardingInteractionHint[];
-  onSubmitInteractionUpdates?: (updates: UserAgentOnboardingUpdate[]) => Promise<void>;
+  currentQuestion?: UserAgentOnboardingQuestion;
 }
 
 const chatInputLeftActions: ActionKeys[] = isDev ? ['model'] : [];
 
 const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
-  ({ interactionHints, onSubmitInteractionUpdates }) => {
+  ({ currentQuestion }) => {
     const { styles } = useStyles();
     const [dismissedNodes, setDismissedNodes] = useState<string[]>([]);
-    const interactionSignature = useMemo(
-      () => JSON.stringify(interactionHints || []),
-      [interactionHints],
+    const questionSignature = useMemo(
+      () => JSON.stringify(currentQuestion || null),
+      [currentQuestion],
     );
-    const lastInteractionSignatureRef = useRef(interactionSignature);
+    const lastQuestionSignatureRef = useRef(questionSignature);
 
     useEffect(() => {
-      if (lastInteractionSignatureRef.current === interactionSignature) return;
+      if (lastQuestionSignatureRef.current === questionSignature) return;
 
-      lastInteractionSignatureRef.current = interactionSignature;
+      lastQuestionSignatureRef.current = questionSignature;
       setDismissedNodes([]);
-    }, [interactionSignature]);
+    }, [questionSignature]);
 
-    const visibleInteractionHints = useMemo(() => {
-      if (!interactionHints?.length) return [];
+    const visibleQuestion = useMemo(() => {
+      if (!currentQuestion) return undefined;
 
       const dismissedNodeSet = new Set(dismissedNodes);
 
-      return interactionHints.filter((hint) => !dismissedNodeSet.has(hint.node));
-    }, [dismissedNodes, interactionHints]);
-    const showStructuredActions = visibleInteractionHints.length > 0;
+      return dismissedNodeSet.has(currentQuestion.node) ? undefined : currentQuestion;
+    }, [currentQuestion, dismissedNodes]);
+
+    const showQuestionSurface = !!visibleQuestion;
 
     const handleDismissNode = (node: string) => {
       setDismissedNodes((state) => (state.includes(node) ? state : [...state, node]));
@@ -82,12 +79,11 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
         </Flexbox>
 
         <Flexbox className={styles.composerZone} paddingInline={8}>
-          {showStructuredActions && (
+          {showQuestionSurface && visibleQuestion && (
             <Flexbox className={styles.structuredActions}>
-              <InteractionHintRenderer
-                interactionHints={visibleInteractionHints}
+              <QuestionRenderer
+                currentQuestion={visibleQuestion}
                 onDismissNode={handleDismissNode}
-                onSubmitUpdates={onSubmitInteractionUpdates}
               />
             </Flexbox>
           )}

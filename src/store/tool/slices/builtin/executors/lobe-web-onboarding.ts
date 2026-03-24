@@ -13,8 +13,8 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   readonly identifier = WebOnboardingIdentifier;
   protected readonly apiEnum = WebOnboardingApiName;
 
-  getOnboardingContext = async (): Promise<BuiltinToolResult> => {
-    const result = await userService.getAgentOnboardingContext();
+  getOnboardingState = async (): Promise<BuiltinToolResult> => {
+    const result = await userService.getOnboardingState();
 
     return {
       content: JSON.stringify(result, null, 2),
@@ -23,25 +23,25 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     };
   };
 
-  proposeOnboardingPatch = async (
+  saveAnswer = async (
     params: {
-      updates: Parameters<typeof userService.proposeAgentOnboardingPatch>[0]['updates'];
+      updates: Parameters<typeof userService.saveOnboardingAnswer>[0]['updates'];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.proposeAgentOnboardingPatch(params);
+    const result = await userService.saveOnboardingAnswer(params);
 
     return createWebOnboardingToolResult(result);
   };
 
-  proposeOnboardingInteractions = async (
+  askUserQuestion = async (
     params: {
-      hints: Parameters<typeof userService.proposeAgentOnboardingInteractions>[0]['hints'];
-      node: Parameters<typeof userService.proposeAgentOnboardingInteractions>[0]['node'];
+      node: Parameters<typeof userService.askOnboardingQuestion>[0]['node'];
+      question: Parameters<typeof userService.askOnboardingQuestion>[0]['question'];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.proposeAgentOnboardingInteractions(params);
+    const result = await userService.askOnboardingQuestion(params);
 
     return {
       content: result.content,
@@ -50,31 +50,31 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     };
   };
 
-  commitOnboardingNode = async (
+  completeCurrentStep = async (
     params: {
-      node: Parameters<typeof userService.commitAgentOnboardingNode>[0];
+      node: Parameters<typeof userService.completeOnboardingStep>[0];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.commitAgentOnboardingNode(params.node);
+    const result = await userService.completeOnboardingStep(params.node);
 
     return createWebOnboardingToolResult(result);
   };
 
-  redirectOfftopic = async (
+  returnToOnboarding = async (
     params: { reason?: string },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.redirectAgentOnboardingOfftopic(params.reason);
+    const result = await userService.returnToOnboarding(params.reason);
 
     return createWebOnboardingToolResult(result);
   };
 
-  finishAgentOnboarding = async (
+  finishOnboarding = async (
     _params: Record<string, never>,
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.finishAgentOnboarding();
+    const result = await userService.finishOnboarding();
 
     return createWebOnboardingToolResult(result);
   };

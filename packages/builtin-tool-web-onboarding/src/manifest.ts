@@ -7,8 +7,8 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
   api: [
     {
       description:
-        'Read the current web onboarding state, including the active step, committed values, saved draft, and interaction hints for the next UI surface.',
-      name: WebOnboardingApiName.getOnboardingContext,
+        'Read the current onboarding state, including the active step, committed values, saved draft, and any currently stored question surface.',
+      name: WebOnboardingApiName.getOnboardingState,
       parameters: {
         properties: {},
         type: 'object',
@@ -17,195 +17,10 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Propose interaction hints for the current onboarding step. Use this to generate button groups, forms, selects, info cards, or composer prefills that help the user respond faster.',
-      name: WebOnboardingApiName.proposeOnboardingInteractions,
+        'Define the current question for the active onboarding step. Use this to ask one focused question and attach the best answer surface, such as choices, a form, a select, or a composer prefill.',
+      name: WebOnboardingApiName.askUserQuestion,
       parameters: {
         properties: {
-          hints: {
-            items: {
-              properties: {
-                actions: {
-                  items: {
-                    properties: {
-                      id: { type: 'string' },
-                      label: { type: 'string' },
-                      payload: {
-                        properties: {
-                          kind: {
-                            enum: ['message', 'patch'],
-                            type: 'string',
-                          },
-                          message: { type: 'string' },
-                          patch: {
-                            properties: {
-                              agentIdentity: {
-                                properties: {
-                                  emoji: { type: 'string' },
-                                  name: { type: 'string' },
-                                  nature: { type: 'string' },
-                                  vibe: { type: 'string' },
-                                },
-                                type: 'object',
-                              },
-                              defaultModel: {
-                                properties: {
-                                  model: { type: 'string' },
-                                  provider: { type: 'string' },
-                                },
-                                type: 'object',
-                              },
-                              painPoints: {
-                                properties: {
-                                  blockedBy: {
-                                    items: { type: 'string' },
-                                    type: 'array',
-                                  },
-                                  frustrations: {
-                                    items: { type: 'string' },
-                                    type: 'array',
-                                  },
-                                  noTimeFor: {
-                                    items: { type: 'string' },
-                                    type: 'array',
-                                  },
-                                  summary: { type: 'string' },
-                                },
-                                type: 'object',
-                              },
-                              responseLanguage: { type: 'string' },
-                              userIdentity: {
-                                properties: {
-                                  domainExpertise: { type: 'string' },
-                                  name: { type: 'string' },
-                                  professionalRole: { type: 'string' },
-                                  summary: { type: 'string' },
-                                },
-                                type: 'object',
-                              },
-                              workContext: {
-                                properties: {
-                                  activeProjects: {
-                                    items: { type: 'string' },
-                                    type: 'array',
-                                  },
-                                  currentFocus: { type: 'string' },
-                                  interests: {
-                                    items: { type: 'string' },
-                                    type: 'array',
-                                  },
-                                  summary: { type: 'string' },
-                                  thisQuarter: { type: 'string' },
-                                  thisWeek: { type: 'string' },
-                                  tools: {
-                                    items: { type: 'string' },
-                                    type: 'array',
-                                  },
-                                },
-                                type: 'object',
-                              },
-                              workStyle: {
-                                properties: {
-                                  communicationStyle: { type: 'string' },
-                                  decisionMaking: { type: 'string' },
-                                  socialMode: { type: 'string' },
-                                  summary: { type: 'string' },
-                                  thinkingPreferences: { type: 'string' },
-                                  workStyle: { type: 'string' },
-                                },
-                                type: 'object',
-                              },
-                            },
-                            type: 'object',
-                          },
-                          targetNode: {
-                            enum: [
-                              'agentIdentity',
-                              'userIdentity',
-                              'workStyle',
-                              'workContext',
-                              'painPoints',
-                              'responseLanguage',
-                              'proSettings',
-                              'summary',
-                            ],
-                            type: 'string',
-                          },
-                        },
-                        required: ['kind'],
-                        type: 'object',
-                      },
-                      style: {
-                        enum: ['danger', 'default', 'primary'],
-                        type: 'string',
-                      },
-                    },
-                    required: ['id', 'label'],
-                    type: 'object',
-                  },
-                  type: 'array',
-                },
-                description: { type: 'string' },
-                fields: {
-                  items: {
-                    properties: {
-                      key: { type: 'string' },
-                      kind: {
-                        enum: ['emoji', 'multiselect', 'select', 'text', 'textarea'],
-                        type: 'string',
-                      },
-                      label: { type: 'string' },
-                      options: {
-                        items: {
-                          properties: {
-                            label: { type: 'string' },
-                            value: { type: 'string' },
-                          },
-                          required: ['label', 'value'],
-                          type: 'object',
-                        },
-                        type: 'array',
-                      },
-                      placeholder: { type: 'string' },
-                      required: { type: 'boolean' },
-                      value: {
-                        oneOf: [
-                          { type: 'string' },
-                          {
-                            items: { type: 'string' },
-                            type: 'array',
-                          },
-                        ],
-                      },
-                    },
-                    required: ['key', 'kind', 'label'],
-                    type: 'object',
-                  },
-                  type: 'array',
-                },
-                id: { type: 'string' },
-                kind: {
-                  enum: ['button_group', 'composer_prefill', 'form', 'info', 'select'],
-                  type: 'string',
-                },
-                metadata: {
-                  additionalProperties: true,
-                  type: 'object',
-                },
-                priority: {
-                  enum: ['primary', 'secondary'],
-                  type: 'string',
-                },
-                submitMode: {
-                  enum: ['message', 'tool'],
-                  type: 'string',
-                },
-                title: { type: 'string' },
-              },
-              required: ['id', 'kind'],
-              type: 'object',
-            },
-            type: 'array',
-          },
           node: {
             enum: [
               'agentIdentity',
@@ -219,15 +34,120 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
             ],
             type: 'string',
           },
+          question: {
+            properties: {
+              choices: {
+                items: {
+                  properties: {
+                    id: { type: 'string' },
+                    label: { type: 'string' },
+                    payload: {
+                      properties: {
+                        kind: {
+                          enum: ['message', 'patch'],
+                          type: 'string',
+                        },
+                        message: { type: 'string' },
+                        patch: {
+                          additionalProperties: true,
+                          type: 'object',
+                        },
+                        targetNode: {
+                          enum: [
+                            'agentIdentity',
+                            'userIdentity',
+                            'workStyle',
+                            'workContext',
+                            'painPoints',
+                            'responseLanguage',
+                            'proSettings',
+                            'summary',
+                          ],
+                          type: 'string',
+                        },
+                      },
+                      required: ['kind'],
+                      type: 'object',
+                    },
+                    style: {
+                      enum: ['danger', 'default', 'primary'],
+                      type: 'string',
+                    },
+                  },
+                  required: ['id', 'label'],
+                  type: 'object',
+                },
+                type: 'array',
+              },
+              description: { type: 'string' },
+              fields: {
+                items: {
+                  properties: {
+                    key: { type: 'string' },
+                    kind: {
+                      enum: ['emoji', 'multiselect', 'select', 'text', 'textarea'],
+                      type: 'string',
+                    },
+                    label: { type: 'string' },
+                    options: {
+                      items: {
+                        properties: {
+                          label: { type: 'string' },
+                          value: { type: 'string' },
+                        },
+                        required: ['label', 'value'],
+                        type: 'object',
+                      },
+                      type: 'array',
+                    },
+                    placeholder: { type: 'string' },
+                    required: { type: 'boolean' },
+                    value: {
+                      oneOf: [
+                        { type: 'string' },
+                        {
+                          items: { type: 'string' },
+                          type: 'array',
+                        },
+                      ],
+                    },
+                  },
+                  required: ['key', 'kind', 'label'],
+                  type: 'object',
+                },
+                type: 'array',
+              },
+              id: { type: 'string' },
+              metadata: {
+                additionalProperties: true,
+                type: 'object',
+              },
+              mode: {
+                enum: ['button_group', 'composer_prefill', 'form', 'info', 'select'],
+                type: 'string',
+              },
+              priority: {
+                enum: ['primary', 'secondary'],
+                type: 'string',
+              },
+              prompt: { type: 'string' },
+              submitMode: {
+                enum: ['message', 'tool'],
+                type: 'string',
+              },
+            },
+            required: ['id', 'mode', 'prompt'],
+            type: 'object',
+          },
         },
-        required: ['node', 'hints'],
+        required: ['node', 'question'],
         type: 'object',
       },
     },
     {
       description:
-        'Propose one or more structured onboarding updates. Use batch updates when the user provided information for multiple nodes in the same turn.',
-      name: WebOnboardingApiName.proposeOnboardingPatch,
+        'Save one or more structured answers from the user. patch is node-scoped and may be partial: because node is already provided, send only that node’s fields. Use batch updates when the user clearly answered multiple consecutive onboarding steps in one turn.',
+      name: WebOnboardingApiName.saveAnswer,
       parameters: {
         properties: {
           updates: {
@@ -247,84 +167,7 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
                   type: 'string',
                 },
                 patch: {
-                  properties: {
-                    agentIdentity: {
-                      properties: {
-                        emoji: { type: 'string' },
-                        name: { type: 'string' },
-                        nature: { type: 'string' },
-                        vibe: { type: 'string' },
-                      },
-                      type: 'object',
-                    },
-                    defaultModel: {
-                      properties: {
-                        model: { type: 'string' },
-                        provider: { type: 'string' },
-                      },
-                      type: 'object',
-                    },
-                    painPoints: {
-                      properties: {
-                        blockedBy: {
-                          items: { type: 'string' },
-                          type: 'array',
-                        },
-                        frustrations: {
-                          items: { type: 'string' },
-                          type: 'array',
-                        },
-                        noTimeFor: {
-                          items: { type: 'string' },
-                          type: 'array',
-                        },
-                        summary: { type: 'string' },
-                      },
-                      type: 'object',
-                    },
-                    responseLanguage: { type: 'string' },
-                    userIdentity: {
-                      properties: {
-                        domainExpertise: { type: 'string' },
-                        name: { type: 'string' },
-                        professionalRole: { type: 'string' },
-                        summary: { type: 'string' },
-                      },
-                      type: 'object',
-                    },
-                    workContext: {
-                      properties: {
-                        activeProjects: {
-                          items: { type: 'string' },
-                          type: 'array',
-                        },
-                        currentFocus: { type: 'string' },
-                        interests: {
-                          items: { type: 'string' },
-                          type: 'array',
-                        },
-                        summary: { type: 'string' },
-                        thisQuarter: { type: 'string' },
-                        thisWeek: { type: 'string' },
-                        tools: {
-                          items: { type: 'string' },
-                          type: 'array',
-                        },
-                      },
-                      type: 'object',
-                    },
-                    workStyle: {
-                      properties: {
-                        communicationStyle: { type: 'string' },
-                        decisionMaking: { type: 'string' },
-                        socialMode: { type: 'string' },
-                        summary: { type: 'string' },
-                        thinkingPreferences: { type: 'string' },
-                        workStyle: { type: 'string' },
-                      },
-                      type: 'object',
-                    },
-                  },
+                  additionalProperties: true,
                   type: 'object',
                 },
               },
@@ -340,8 +183,8 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Commit the active onboarding step after the user has provided a reliable or confirmed answer.',
-      name: WebOnboardingApiName.commitOnboardingNode,
+        'Complete the active onboarding step after the user has provided a reliable or confirmed answer.',
+      name: WebOnboardingApiName.completeCurrentStep,
       parameters: {
         properties: {
           node: {
@@ -364,8 +207,8 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Record an off-topic turn and return the flow back to the active onboarding question.',
-      name: WebOnboardingApiName.redirectOfftopic,
+        'Record an off-topic turn and bring the conversation back to the active onboarding question.',
+      name: WebOnboardingApiName.returnToOnboarding,
       parameters: {
         properties: {
           reason: { type: 'string' },
@@ -375,8 +218,8 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Finish the agent onboarding flow from the summary node and mirror the legacy onboarding completion flag.',
-      name: WebOnboardingApiName.finishAgentOnboarding,
+        'Finish the onboarding flow from the summary step and mirror the legacy onboarding completion flag.',
+      name: WebOnboardingApiName.finishOnboarding,
       parameters: {
         properties: {},
         type: 'object',
