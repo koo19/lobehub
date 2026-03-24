@@ -21,7 +21,7 @@ export const webOnboardingRuntime: ServerRuntimeRegistration = {
       proxy[api.name] = async (args: Record<string, unknown>) => {
         switch (api.name) {
           case 'getOnboardingState': {
-            const result = await service.getState();
+            const result = await service.getState({ issueReadToken: true });
 
             return { content: JSON.stringify(result, null, 2), state: result, success: true };
           }
@@ -36,17 +36,23 @@ export const webOnboardingRuntime: ServerRuntimeRegistration = {
             return createWebOnboardingToolResult(result);
           }
           case 'completeCurrentStep': {
-            const result = await service.completeCurrentStep(args.node as any);
+            const result = await service.completeCurrentStep(
+              args.node as any,
+              args.readToken as string,
+            );
 
             return createWebOnboardingToolResult(result);
           }
           case 'returnToOnboarding': {
-            const result = await service.returnToOnboarding(args.reason as string | undefined);
+            const result = await service.returnToOnboarding(
+              args.readToken as string,
+              args.reason as string | undefined,
+            );
 
             return createWebOnboardingToolResult(result);
           }
           case 'finishOnboarding': {
-            const result = await service.finishOnboarding();
+            const result = await service.finishOnboarding(args.readToken as string);
 
             return createWebOnboardingToolResult(result);
           }

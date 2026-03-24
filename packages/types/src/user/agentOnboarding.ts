@@ -123,6 +123,36 @@ export interface UserAgentOnboardingQuestionSurface {
   updatedAt: string;
 }
 
+export interface UserAgentOnboardingExecutionGuard {
+  issuedAt: string;
+  readToken: string;
+}
+
+export interface UserAgentOnboardingControl {
+  allowedTools: string[];
+  canCompleteCurrentStep: boolean;
+  canFinish: boolean;
+  missingFields: string[];
+  readToken?: string;
+  readTokenRequired: boolean;
+}
+
+export interface UserAgentOnboardingContext {
+  activeNode?: UserAgentOnboardingNode;
+  activeNodeDraftState?: {
+    missingFields?: string[];
+    status: 'complete' | 'empty' | 'partial';
+  };
+  committed: Record<string, unknown>;
+  completedNodes: UserAgentOnboardingNode[];
+  control: UserAgentOnboardingControl;
+  currentQuestion?: UserAgentOnboardingQuestion;
+  draft: UserAgentOnboardingDraft;
+  finishedAt?: string;
+  topicId?: string;
+  version: number;
+}
+
 export interface UserAgentOnboardingDraft {
   agentIdentity?: Partial<UserOnboardingAgentIdentity>;
   defaultModel?: Partial<UserOnboardingDefaultModel>;
@@ -138,6 +168,7 @@ export interface UserAgentOnboarding {
   agentIdentity?: UserOnboardingAgentIdentity;
   completedNodes?: UserAgentOnboardingNode[];
   draft?: UserAgentOnboardingDraft;
+  executionGuard?: UserAgentOnboardingExecutionGuard;
   finishedAt?: string;
   profile?: UserOnboardingProfile;
   questionSurface?: UserAgentOnboardingQuestionSurface;
@@ -258,11 +289,17 @@ const UserAgentOnboardingQuestionSurfaceSchema = z.object({
   updatedAt: z.string(),
 });
 
+const UserAgentOnboardingExecutionGuardSchema = z.object({
+  issuedAt: z.string(),
+  readToken: z.string(),
+});
+
 export const UserAgentOnboardingSchema = z.object({
   activeTopicId: z.string().optional(),
   agentIdentity: UserOnboardingAgentIdentitySchema.optional(),
   completedNodes: z.array(UserAgentOnboardingNodeSchema).optional(),
   draft: UserAgentOnboardingDraftSchema.optional(),
+  executionGuard: UserAgentOnboardingExecutionGuardSchema.optional(),
   finishedAt: z.string().optional(),
   profile: z
     .object({

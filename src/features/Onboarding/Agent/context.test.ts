@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveAgentOnboardingContext } from './context';
 
 describe('resolveAgentOnboardingContext', () => {
-  it('prefers stored onboarding state over bootstrap context', () => {
+  it('prefers bootstrap onboarding topic over stored onboarding state', () => {
     const result = resolveAgentOnboardingContext({
       bootstrapContext: {
         agentOnboarding: {
@@ -25,7 +25,7 @@ describe('resolveAgentOnboardingContext', () => {
 
     expect(result).toEqual({
       currentQuestion: undefined,
-      topicId: 'topic-store',
+      topicId: 'topic-bootstrap',
     });
   });
 

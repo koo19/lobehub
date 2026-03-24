@@ -1,28 +1,32 @@
 'use client';
 
-import { type UserAgentOnboardingQuestion } from '@lobechat/types';
+import type { UserAgentOnboardingNode, UserAgentOnboardingQuestion } from '@lobechat/types';
 import { Flexbox } from '@lobehub/ui';
 import { createStyles } from 'antd-style';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { type ActionKeys } from '@/features/ChatInput';
-import { ChatInput, ChatList } from '@/features/Conversation';
+import type { ActionKeys } from '@/features/ChatInput';
+import {
+  ChatInput,
+  ChatList,
+  conversationSelectors,
+  MessageItem,
+  useConversationStore,
+} from '@/features/Conversation';
 import { isDev } from '@/utils/env';
 
 import QuestionRenderer from './QuestionRenderer';
-import Welcome from './Welcome';
+
+const assistantLikeRoles = new Set(['assistant', 'assistantGroup', 'supervisor']);
 
 const useStyles = createStyles(({ css, token }) => ({
   composerZone: css`
     gap: 8px;
   `,
-  structuredActions: css`
-    padding: 12px;
-    border: 1px solid ${token.colorBorderSecondary};
-    border-radius: 16px;
-
-    background: ${token.colorBgElevated};
-    box-shadow: ${token.boxShadowTertiary};
+  inlineQuestion: css`
+    margin-block-start: 4px;
+    padding-block-start: 12px;
+    border-block-start: 1px solid ${token.colorBorderSecondary};
   `,
 }));
 
@@ -36,6 +40,7 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
   ({ currentQuestion }) => {
     const { styles } = useStyles();
     const [dismissedNodes, setDismissedNodes] = useState<string[]>([]);
+    const displayMessages = useConversationStore(conversationSelectors.displayMessages);
     const questionSignature = useMemo(
       () => JSON.stringify(currentQuestion || null),
       [currentQuestion],
@@ -57,14 +62,46 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
       return dismissedNodeSet.has(currentQuestion.node) ? undefined : currentQuestion;
     }, [currentQuestion, dismissedNodes]);
 
-    const showQuestionSurface = !!visibleQuestion;
+    const lastAssistantMessageId = useMemo(() => {
+      for (const message of [...displayMessages].reverse()) {
+        if (assistantLikeRoles.has(message.role)) return message.id;
+      }
 
-    const handleDismissNode = (node: string) => {
+      return undefined;
+    }, [displayMessages]);
+
+    const handleDismissNode = useCallback((node: UserAgentOnboardingNode) => {
       setDismissedNodes((state) => (state.includes(node) ? state : [...state, node]));
-    };
+    }, []);
+
+    const itemContent = useCallback(
+      (index: number, id: string) => {
+        const isLatestItem = displayMessages.length === index + 1;
+        const endRender =
+          id === lastAssistantMessageId && visibleQuestion ? (
+            <div className={styles.inlineQuestion}>
+              <QuestionRenderer
+                currentQuestion={visibleQuestion}
+                onDismissNode={handleDismissNode}
+              />
+            </div>
+          ) : undefined;
+
+        return (
+          <MessageItem endRender={endRender} id={id} index={index} isLatestItem={isLatestItem} />
+        );
+      },
+      [
+        displayMessages.length,
+        handleDismissNode,
+        lastAssistantMessageId,
+        styles.inlineQuestion,
+        visibleQuestion,
+      ],
+    );
 
     return (
-      <Flexbox flex={1} gap={16} style={{ minHeight: 0, marginTop: -70 }} width={'100%'}>
+      <Flexbox flex={1} gap={16} style={{ minHeight: 0 }} width={'100%'}>
         <Flexbox
           flex={1}
           width={'100%'}
@@ -75,18 +112,10 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
             position: 'relative',
           }}
         >
-          <ChatList welcome={<Welcome />} />
+          <ChatList itemContent={itemContent} />
         </Flexbox>
 
         <Flexbox className={styles.composerZone} paddingInline={8}>
-          {showQuestionSurface && visibleQuestion && (
-            <Flexbox className={styles.structuredActions}>
-              <QuestionRenderer
-                currentQuestion={visibleQuestion}
-                onDismissNode={handleDismissNode}
-              />
-            </Flexbox>
-          )}
           <ChatInput
             allowExpand={false}
             leftActions={chatInputLeftActions}

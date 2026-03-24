@@ -18,5 +18,5 @@ export const resolveAgentOnboardingContext = ({
   storedAgentOnboarding,
 }: ResolveAgentOnboardingContextParams) => ({
   currentQuestion: bootstrapContext?.context.currentQuestion,
-  topicId: storedAgentOnboarding?.activeTopicId ?? bootstrapContext?.topicId,
+  topicId: bootstrapContext?.topicId ?? storedAgentOnboarding?.activeTopicId,
 });

@@ -176,6 +176,28 @@ describe('QuestionRenderer', () => {
     });
   });
 
+  it('falls back to a text form when a button group has no choices', async () => {
+    render(
+      <QuestionRenderer
+        currentQuestion={{
+          id: 'agent-identity-missing-choices',
+          mode: 'button_group',
+          node: 'agentIdentity',
+          prompt: '帮我取个名字，再定个气质。',
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('agent.telemetryHint'), {
+      target: { value: '叫 shishi，风格偏直接。' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'next' }));
+
+    expect(sendMessage).toHaveBeenCalledWith({
+      message: ['Q: agent.telemetryHint', 'A: 叫 shishi，风格偏直接。'].join('\n'),
+    });
+  });
+
   it('formats form submissions as question-answer text', async () => {
     const onDismissNode = vi.fn();
 
@@ -213,7 +235,7 @@ describe('QuestionRenderer', () => {
     fireEvent.change(screen.getByPlaceholderText('Your name'), {
       target: { value: 'Ada' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'next' }));
 
     expect(sendMessage).toHaveBeenCalledWith({
       message: ['Q: Role', 'A: Independent developer', '', 'Q: Name', 'A: Ada'].join('\n'),

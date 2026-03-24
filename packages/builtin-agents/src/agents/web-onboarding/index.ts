@@ -1,10 +1,10 @@
+import { createSystemRole } from '@lobechat/builtin-agent-onboarding';
 import { WebOnboardingIdentifier } from '@lobechat/builtin-tool-web-onboarding';
 import { DEFAULT_PROVIDER } from '@lobechat/business-const';
 import { DEFAULT_MODEL } from '@lobechat/const';
 
 import type { BuiltinAgentDefinition } from '../../types';
 import { BUILTIN_AGENT_SLUGS } from '../../types';
-import { createSystemRole } from './systemRole';
 
 export const WEB_ONBOARDING: BuiltinAgentDefinition = {
   avatar: '/avatars/lobe-ai.png',

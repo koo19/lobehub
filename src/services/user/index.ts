@@ -4,9 +4,8 @@ import { lambdaClient } from '@/libs/trpc/client';
 import {
   type SSOProvider,
   type UserAgentOnboarding,
-  type UserAgentOnboardingDraft,
+  type UserAgentOnboardingContext,
   type UserAgentOnboardingNode,
-  type UserAgentOnboardingQuestion,
   type UserAgentOnboardingQuestionDraft,
   type UserAgentOnboardingUpdate,
   type UserGuide,
@@ -36,30 +35,20 @@ export class UserService {
   getOrCreateOnboardingState = async (): Promise<{
     agentId: string;
     agentOnboarding: UserAgentOnboarding;
-    context: {
-      activeNode?: UserAgentOnboardingNode;
-      activeNodeDraftState?: {
-        missingFields?: string[];
-        status: 'complete' | 'empty' | 'partial';
-      };
-      committed: Record<string, unknown>;
-      completedNodes: UserAgentOnboardingNode[];
-      currentQuestion?: UserAgentOnboardingQuestion;
-      draft: UserAgentOnboardingDraft;
-      finishedAt?: string;
-      topicId?: string;
-      version: number;
-    };
+    context: UserAgentOnboardingContext;
     topicId: string;
   }> => {
     return lambdaClient.user.getOrCreateOnboardingState.query();
   };
 
-  getOnboardingState = async () => {
+  getOnboardingState = async (): Promise<UserAgentOnboardingContext> => {
     return lambdaClient.user.getOnboardingState.query();
   };
 
-  saveOnboardingAnswer = async (params: { updates: UserAgentOnboardingUpdate[] }) => {
+  saveOnboardingAnswer = async (params: {
+    readToken: string;
+    updates: UserAgentOnboardingUpdate[];
+  }) => {
     return lambdaClient.user.saveOnboardingAnswer.mutate(
       params as Parameters<typeof lambdaClient.user.saveOnboardingAnswer.mutate>[0],
     );
@@ -68,20 +57,21 @@ export class UserService {
   askOnboardingQuestion = async (params: {
     node: UserAgentOnboardingNode;
     question: UserAgentOnboardingQuestionDraft;
+    readToken: string;
   }) => {
     return lambdaClient.user.askOnboardingQuestion.mutate(params);
   };
 
-  completeOnboardingStep = async (node: UserAgentOnboardingNode) => {
-    return lambdaClient.user.completeOnboardingStep.mutate({ node });
+  completeOnboardingStep = async (node: UserAgentOnboardingNode, readToken: string) => {
+    return lambdaClient.user.completeOnboardingStep.mutate({ node, readToken });
   };
 
-  returnToOnboarding = async (reason?: string) => {
-    return lambdaClient.user.returnToOnboarding.mutate({ reason });
+  returnToOnboarding = async (readToken: string, reason?: string) => {
+    return lambdaClient.user.returnToOnboarding.mutate({ readToken, reason });
   };
 
-  finishOnboarding = async () => {
-    return lambdaClient.user.finishOnboarding.mutate();
+  finishOnboarding = async (readToken: string) => {
+    return lambdaClient.user.finishOnboarding.mutate({ readToken });
   };
 
   makeUserOnboarded = async () => {

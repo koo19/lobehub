@@ -25,6 +25,7 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
 
   saveAnswer = async (
     params: {
+      readToken: string;
       updates: Parameters<typeof userService.saveOnboardingAnswer>[0]['updates'];
     },
     _ctx: BuiltinToolContext,
@@ -38,6 +39,7 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     params: {
       node: Parameters<typeof userService.askOnboardingQuestion>[0]['node'];
       question: Parameters<typeof userService.askOnboardingQuestion>[0]['question'];
+      readToken: Parameters<typeof userService.askOnboardingQuestion>[0]['readToken'];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
@@ -53,28 +55,29 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
   completeCurrentStep = async (
     params: {
       node: Parameters<typeof userService.completeOnboardingStep>[0];
+      readToken: Parameters<typeof userService.completeOnboardingStep>[1];
     },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.completeOnboardingStep(params.node);
+    const result = await userService.completeOnboardingStep(params.node, params.readToken);
 
     return createWebOnboardingToolResult(result);
   };
 
   returnToOnboarding = async (
-    params: { reason?: string },
+    params: { readToken: string; reason?: string },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.returnToOnboarding(params.reason);
+    const result = await userService.returnToOnboarding(params.readToken, params.reason);
 
     return createWebOnboardingToolResult(result);
   };
 
   finishOnboarding = async (
-    _params: Record<string, never>,
+    params: { readToken: string },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.finishOnboarding();
+    const result = await userService.finishOnboarding(params.readToken);
 
     return createWebOnboardingToolResult(result);
   };

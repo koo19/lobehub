@@ -4,11 +4,16 @@ import { UserAgentOnboardingUpdateSchema } from '@lobechat/types';
 import { merge } from '@lobechat/utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { MessageModel } from '@/database/models/message';
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
 import { AgentService } from '@/server/services/agent';
 
 import { OnboardingService } from './index';
+
+vi.mock('@/database/models/message', () => ({
+  MessageModel: vi.fn(),
+}));
 
 vi.mock('@/database/models/topic', () => ({
   TopicModel: vi.fn(),
@@ -36,8 +41,13 @@ describe('OnboardingService', () => {
   let mockAgentService: {
     getBuiltinAgent: ReturnType<typeof vi.fn>;
   };
+  let mockMessageModel: {
+    create: ReturnType<typeof vi.fn>;
+    query: ReturnType<typeof vi.fn>;
+  };
   let mockTopicModel: {
     create: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
     findById: ReturnType<typeof vi.fn>;
   };
   let persistedUserState: any;
@@ -76,18 +86,30 @@ describe('OnboardingService', () => {
         persistedUserState = merge(persistedUserState, patch);
       }),
     };
+    mockMessageModel = {
+      create: vi.fn(async () => ({ id: 'message-1' })),
+      query: vi.fn(async () => []),
+    };
     mockTopicModel = {
       create: vi.fn(async () => ({ id: 'topic-1' })),
+      delete: vi.fn(async () => undefined),
       findById: vi.fn(async () => undefined),
     };
     mockAgentService = {
       getBuiltinAgent: vi.fn(async () => ({ id: 'builtin-agent-1' })),
     };
 
+    vi.mocked(MessageModel).mockImplementation(() => mockMessageModel as any);
     vi.mocked(UserModel).mockImplementation(() => mockUserModel as any);
     vi.mocked(TopicModel).mockImplementation(() => mockTopicModel as any);
     vi.mocked(AgentService).mockImplementation(() => mockAgentService as any);
   });
+
+  const issueReadToken = async (service: OnboardingService) => {
+    const context = await service.getState({ issueReadToken: true });
+
+    return context.control.readToken!;
+  };
 
   it('resets legacy onboarding nodes to the new conversational flow', async () => {
     persistedUserState.agentOnboarding = {
@@ -104,6 +126,53 @@ describe('OnboardingService', () => {
     expect(context.committed.agentIdentity).toBeUndefined();
   });
 
+  it('issues control metadata and a read token for tool execution state reads', async () => {
+    persistedUserState.agentOnboarding = {
+      completedNodes: [],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    const service = new OnboardingService(mockDb, userId);
+    const context = await service.getState({ issueReadToken: true });
+
+    expect(context.control.readTokenRequired).toBe(true);
+    expect(context.control.readToken).toBeTruthy();
+    expect(context.control.allowedTools).toContain('getOnboardingState');
+    expect(context.control.allowedTools).toContain('askUserQuestion');
+    expect(context.control.allowedTools).toContain('saveAnswer');
+  });
+
+  it('rejects onboarding actions when the latest state read token is missing or stale', async () => {
+    persistedUserState.agentOnboarding = {
+      completedNodes: [],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    const service = new OnboardingService(mockDb, userId);
+    const result = await service.saveAnswer({
+      readToken: 'stale-token',
+      updates: [
+        {
+          node: 'agentIdentity',
+          patch: {
+            emoji: '🦞',
+            name: 'Lobster',
+            nature: 'direct',
+            vibe: 'steady',
+          },
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('STATE_READ_REQUIRED');
+    expect(result.instruction).toContain(
+      'Call getOnboardingState immediately before any other onboarding tool.',
+    );
+  });
+
   it('commits agent identity and advances to user identity', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: [],
@@ -113,6 +182,7 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
+      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
@@ -166,6 +236,7 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
+      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
@@ -198,6 +269,7 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
+      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
@@ -230,6 +302,7 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
+      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'userIdentity',
@@ -319,6 +392,7 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const result = await service.saveAnswer({
+      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
@@ -379,6 +453,7 @@ describe('OnboardingService', () => {
         mode: 'button_group',
         prompt: 'AI-generated preset',
       },
+      readToken: await issueReadToken(service),
     });
 
     expect(result.success).toBe(true);
@@ -419,6 +494,7 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     await service.saveAnswer({
+      readToken: await issueReadToken(service),
       updates: [
         {
           node: 'agentIdentity',
@@ -493,13 +569,15 @@ describe('OnboardingService', () => {
 
     const service = new OnboardingService(mockDb, userId);
     const context = await service.getState();
+    const committedAgentIdentity = context.committed.agentIdentity as any;
+    const committedProfile = context.committed.profile as any;
 
-    expect(context.committed.agentIdentity?.name).toBe('小七');
+    expect(committedAgentIdentity?.name).toBe('小七');
     expect(context.currentQuestion).toBeUndefined();
-    expect(context.committed.profile?.identity?.professionalRole).toBe('Product Manager');
-    expect(context.committed.profile?.workStyle?.decisionMaking).toBe('data-informed but fast');
-    expect(context.committed.profile?.workContext?.tools).toEqual(['Notion', 'Figma', 'SQL']);
-    expect(context.committed.profile?.painPoints?.blockedBy).toEqual(['cross-team alignment']);
+    expect(committedProfile?.identity?.professionalRole).toBe('Product Manager');
+    expect(committedProfile?.workStyle?.decisionMaking).toBe('data-informed but fast');
+    expect(committedProfile?.workContext?.tools).toEqual(['Notion', 'Figma', 'SQL']);
+    expect(committedProfile?.painPoints?.blockedBy).toEqual(['cross-team alignment']);
   });
 
   it('allows finish when summary is the derived active step even if legacy currentNode is stale', async () => {
@@ -519,14 +597,14 @@ describe('OnboardingService', () => {
     };
 
     const service = new OnboardingService(mockDb, userId);
-    const result = await service.finishOnboarding();
+    const result = await service.finishOnboarding(await issueReadToken(service));
 
     expect(result.success).toBe(true);
     expect(persistedUserState.agentOnboarding.finishedAt).toBeTruthy();
     expect(persistedUserState.agentOnboarding.completedNodes).toContain('summary');
   });
 
-  it('does not create a persisted welcome message for a new onboarding topic', async () => {
+  it('creates a persisted welcome message for a new onboarding topic', async () => {
     persistedUserState.agentOnboarding = {
       completedNodes: ['agentIdentity', 'userIdentity'],
       draft: {},
@@ -542,5 +620,36 @@ describe('OnboardingService', () => {
       title: 'Onboarding',
       trigger: 'chat',
     });
+    expect(mockMessageModel.query).toHaveBeenCalledWith({
+      agentId: 'builtin-agent-1',
+      pageSize: 1,
+      topicId: 'topic-1',
+    });
+    expect(mockMessageModel.create).toHaveBeenCalledWith({
+      agentId: 'builtin-agent-1',
+      content: expect.stringContaining('Onboarding'),
+      role: 'assistant',
+      topicId: 'topic-1',
+    });
+  });
+
+  it('reset deletes the previous onboarding topic before clearing state', async () => {
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-old',
+      completedNodes: ['agentIdentity'],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    const service = new OnboardingService(mockDb, userId);
+    const result = await service.reset();
+
+    expect(result).toEqual({
+      completedNodes: [],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    });
+    expect(mockTopicModel.delete).toHaveBeenCalledWith('topic-old');
+    expect(persistedUserState.agentOnboarding).toEqual(result);
   });
 });
