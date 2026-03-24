@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { lambdaClient } from '@/libs/trpc/client';
+import { lambdaClient, toolsClient } from '@/libs/trpc/client';
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_TIMEOUT_MS = 15_000;
@@ -11,9 +11,9 @@ export type SocialProvider = 'github' | 'twitter';
 
 export interface SocialProfile {
   avatarUrl?: string;
-  connectedAt: string;
+  connectedAt?: string;
   id: string;
-  profileUrl: string;
+  profileUrl?: string;
   provider: SocialProvider;
   username: string;
 }
@@ -79,14 +79,24 @@ export const useSocialConnect = ({
     };
   }, [cleanup]);
 
-  // Fetch current profile status
+  // Fetch current profile status using existing connect API
   const fetchProfile = useCallback(async () => {
     try {
-      const result = await lambdaClient.market.socialProfile.getSocialProfile.query({ provider });
-      setProfile(result.profile);
-      return result.profile;
+      const result = await toolsClient.market.connectGetStatus.query({ provider });
+      if (result.connected && result.connection) {
+        const profile: SocialProfile = {
+          id: provider,
+          provider: provider as SocialProvider,
+          username: result.connection.providerUsername || provider,
+        };
+        setProfile(profile);
+        return profile;
+      }
+      setProfile(null);
+      return null;
     } catch (err) {
       console.error('[SocialConnect] Failed to fetch profile:', err);
+      setProfile(null);
       return null;
     }
   }, [provider]);
@@ -209,7 +219,7 @@ export const useSocialConnect = ({
     [cleanup, startWindowMonitor, startFallbackPolling],
   );
 
-  // Connect handler
+  // Connect handler using existing connect API
   const connect = useCallback(async () => {
     if (profile) return; // Already connected
 
@@ -218,7 +228,7 @@ export const useSocialConnect = ({
 
     try {
       const redirectUri = `${window.location.origin}/oauth/callback/social?provider=${encodeURIComponent(provider)}`;
-      const result = await lambdaClient.market.socialProfile.getAuthorizeUrl.query({
+      const result = await toolsClient.market.connectGetAuthorizeUrl.query({
         provider,
         redirectUri,
       });
@@ -236,7 +246,7 @@ export const useSocialConnect = ({
     }
   }, [provider, profile, openOAuthWindow]);
 
-  // Disconnect handler
+  // Disconnect handler using existing connect API
   const disconnect = useCallback(async () => {
     if (!profile) return;
 
@@ -244,7 +254,7 @@ export const useSocialConnect = ({
     setError(null);
 
     try {
-      await lambdaClient.market.socialProfile.disconnectSocialProfile.mutate({ id: profile.id });
+      await toolsClient.market.connectRevoke.mutate({ provider });
       setProfile(null);
       onDisconnectSuccess?.();
     } catch (err) {
@@ -253,7 +263,7 @@ export const useSocialConnect = ({
     } finally {
       setIsDisconnecting(false);
     }
-  }, [profile, onDisconnectSuccess]);
+  }, [profile, provider, onDisconnectSuccess]);
 
   return {
     connect,
