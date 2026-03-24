@@ -32,12 +32,13 @@ const useStyles = createStyles(({ css, token }) => ({
 
 interface AgentOnboardingConversationProps {
   currentQuestion?: UserAgentOnboardingQuestion;
+  readOnly?: boolean;
 }
 
 const chatInputLeftActions: ActionKeys[] = isDev ? ['model'] : [];
 
 const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
-  ({ currentQuestion }) => {
+  ({ currentQuestion, readOnly }) => {
     const { styles } = useStyles();
     const [dismissedNodes, setDismissedNodes] = useState<string[]>([]);
     const displayMessages = useConversationStore(conversationSelectors.displayMessages);
@@ -55,12 +56,12 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
     }, [questionSignature]);
 
     const visibleQuestion = useMemo(() => {
-      if (!currentQuestion) return undefined;
+      if (readOnly || !currentQuestion) return undefined;
 
       const dismissedNodeSet = new Set(dismissedNodes);
 
       return dismissedNodeSet.has(currentQuestion.node) ? undefined : currentQuestion;
-    }, [currentQuestion, dismissedNodes]);
+    }, [currentQuestion, dismissedNodes, readOnly]);
 
     const lastAssistantMessageId = useMemo(() => {
       for (const message of [...displayMessages].reverse()) {
@@ -115,13 +116,15 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
           <ChatList itemContent={itemContent} />
         </Flexbox>
 
-        <Flexbox className={styles.composerZone} paddingInline={8}>
-          <ChatInput
-            allowExpand={false}
-            leftActions={chatInputLeftActions}
-            showRuntimeConfig={false}
-          />
-        </Flexbox>
+        {!readOnly && (
+          <Flexbox className={styles.composerZone} paddingInline={8}>
+            <ChatInput
+              allowExpand={false}
+              leftActions={chatInputLeftActions}
+              showRuntimeConfig={false}
+            />
+          </Flexbox>
+        )}
       </Flexbox>
     );
   },

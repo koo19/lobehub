@@ -196,4 +196,26 @@ describe('AgentOnboardingConversation', () => {
     expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
   });
+
+  it('renders a read-only transcript when viewing a historical topic', () => {
+    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+
+    render(
+      <AgentOnboardingConversation
+        readOnly
+        currentQuestion={
+          {
+            id: 'agent-identity-question',
+            mode: 'form',
+            node: 'agentIdentity',
+            prompt: '先把我定下来吧。',
+          } as any
+        }
+      />,
+    );
+
+    expect(screen.queryByTestId('chat-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chat-list')).toBeInTheDocument();
+  });
 });

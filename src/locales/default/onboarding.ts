@@ -1,5 +1,7 @@
 export default {
   'agent.banner.label': 'Agent Onboarding',
+  'agent.history.current': 'Current',
+  'agent.history.title': 'History Topics',
   'agent.modeSwitch.agent': 'Conversational',
   'agent.modeSwitch.classic': 'Classic',
   'agent.modeSwitch.label': 'Choose your onboarding mode',

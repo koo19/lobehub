@@ -456,7 +456,7 @@ describe('OnboardingService', () => {
     });
   });
 
-  it('reset deletes the previous onboarding topic before clearing state', async () => {
+  it('reset preserves the previous onboarding topic while clearing state', async () => {
     persistedUserState.agentOnboarding = {
       activeTopicId: 'topic-old',
       completedNodes: ['agentIdentity'],
@@ -472,7 +472,25 @@ describe('OnboardingService', () => {
       draft: {},
       version: CURRENT_ONBOARDING_VERSION,
     });
-    expect(mockTopicModel.delete).toHaveBeenCalledWith('topic-old');
+    expect(mockTopicModel.delete).not.toHaveBeenCalled();
     expect(persistedUserState.agentOnboarding).toEqual(result);
+  });
+
+  it('creates a new onboarding topic after reset clears the active topic pointer', async () => {
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-old',
+      completedNodes: ['agentIdentity'],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+    mockTopicModel.create.mockResolvedValueOnce({ id: 'topic-2' });
+
+    const service = new OnboardingService(mockDb, userId);
+
+    await service.reset();
+    const result = await service.getOrCreateState();
+
+    expect(result.topicId).toBe('topic-2');
+    expect(persistedUserState.agentOnboarding.activeTopicId).toBe('topic-2');
   });
 });

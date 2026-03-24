@@ -1392,12 +1392,7 @@ export class OnboardingService {
   };
 
   reset = async () => {
-    const previousState = await this.ensurePersistedState();
     const state = defaultAgentOnboardingState();
-
-    if (previousState.activeTopicId) {
-      await this.topicModel.delete(previousState.activeTopicId);
-    }
 
     await this.userModel.updateUser({ agentOnboarding: state });
 
