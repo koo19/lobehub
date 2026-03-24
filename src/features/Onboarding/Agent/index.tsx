@@ -131,6 +131,7 @@ const AgentOnboardingPage = memo(() => {
           >
             <ErrorBoundary FallbackComponent={() => null}>
               <AgentOnboardingConversation
+                activeNode={viewingHistoricalTopic ? undefined : currentContext.activeNode}
                 readOnly={viewingHistoricalTopic}
                 currentQuestion={
                   viewingHistoricalTopic ? undefined : currentContext.currentQuestion

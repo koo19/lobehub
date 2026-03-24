@@ -18,11 +18,13 @@ import { useAgentMeta } from '@/features/Conversation/hooks/useAgentMeta';
 import { isDev } from '@/utils/env';
 
 import QuestionRenderer from './QuestionRenderer';
+import ResponseLanguageInlineStep from './ResponseLanguageInlineStep';
 import { staticStyle } from './staticStyle';
 
 const assistantLikeRoles = new Set(['assistant', 'assistantGroup', 'supervisor']);
 
 interface AgentOnboardingConversationProps {
+  activeNode?: UserAgentOnboardingNode;
   currentQuestion?: UserAgentOnboardingQuestion;
   readOnly?: boolean;
 }
@@ -30,14 +32,14 @@ interface AgentOnboardingConversationProps {
 const chatInputLeftActions: ActionKeys[] = isDev ? ['model'] : [];
 
 const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
-  ({ currentQuestion, readOnly }) => {
+  ({ activeNode, currentQuestion, readOnly }) => {
     const { t } = useTranslation('onboarding');
     const agentMeta = useAgentMeta();
     const [dismissedNodes, setDismissedNodes] = useState<string[]>([]);
     const displayMessages = useConversationStore(conversationSelectors.displayMessages);
     const questionSignature = useMemo(
-      () => JSON.stringify(currentQuestion || null),
-      [currentQuestion],
+      () => JSON.stringify({ activeNode, currentQuestion: currentQuestion || null }),
+      [activeNode, currentQuestion],
     );
     const lastQuestionSignatureRef = useRef(questionSignature);
 
@@ -55,6 +57,7 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
 
       return dismissedNodeSet.has(currentQuestion.node) ? undefined : currentQuestion;
     }, [currentQuestion, dismissedNodes, readOnly]);
+    const shouldRenderResponseLanguageStep = !readOnly && activeNode === 'responseLanguage';
 
     const lastAssistantMessageId = useMemo(() => {
       for (const message of [...displayMessages].reverse()) {
@@ -109,10 +112,20 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
         const isLatestItem = displayMessages.length === index + 1;
 
         const effectiveQuestion =
-          isGreetingState && !visibleQuestion ? presetGreetingQuestion : visibleQuestion;
+          !readOnly && isGreetingState && !currentQuestion
+            ? presetGreetingQuestion
+            : visibleQuestion;
+        const effectiveStep =
+          shouldRenderResponseLanguageStep && !dismissedNodes.includes('responseLanguage')
+            ? 'responseLanguage'
+            : undefined;
 
         const endRender =
-          id === lastAssistantMessageId && effectiveQuestion ? (
+          id !== lastAssistantMessageId ? undefined : effectiveStep ? (
+            <div className={staticStyle.inlineQuestion}>
+              <ResponseLanguageInlineStep onDismissNode={handleDismissNode} />
+            </div>
+          ) : effectiveQuestion ? (
             <div className={staticStyle.inlineQuestion}>
               <QuestionRenderer
                 currentQuestion={effectiveQuestion}
@@ -165,6 +178,10 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
         isGreetingState,
         lastAssistantMessageId,
         presetGreetingQuestion,
+        readOnly,
+        currentQuestion,
+        dismissedNodes,
+        shouldRenderResponseLanguageStep,
         visibleQuestion,
       ],
     );

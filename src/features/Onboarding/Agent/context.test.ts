@@ -24,6 +24,7 @@ describe('resolveAgentOnboardingContext', () => {
     });
 
     expect(result).toEqual({
+      activeNode: 'userIdentity',
       currentQuestion: undefined,
       topicId: 'topic-bootstrap',
     });
@@ -49,6 +50,7 @@ describe('resolveAgentOnboardingContext', () => {
     });
 
     expect(result).toEqual({
+      activeNode: 'workStyle',
       currentQuestion: undefined,
       topicId: 'topic-bootstrap',
     });
@@ -84,6 +86,7 @@ describe('resolveAgentOnboardingContext', () => {
     });
 
     expect(result).toEqual({
+      activeNode: 'agentIdentity',
       currentQuestion: {
         id: 'agent_identity_001',
         mode: 'button_group',
@@ -113,6 +116,7 @@ describe('resolveAgentOnboardingContext', () => {
     });
 
     expect(result).toEqual({
+      activeNode: 'userIdentity',
       currentQuestion: undefined,
       topicId: undefined,
     });

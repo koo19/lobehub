@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as EnvModule from '@/utils/env';
+
 import AgentOnboardingConversation from './Conversation';
 
 const { chatInputSpy, mockState } = vi.hoisted(() => ({
@@ -11,7 +13,14 @@ const { chatInputSpy, mockState } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('@/utils/env', () => ({ isDev: false }));
+vi.mock('@/utils/env', async (importOriginal) => {
+  const actual = await importOriginal<typeof EnvModule>();
+
+  return {
+    ...actual,
+    isDev: false,
+  };
+});
 
 vi.mock('@/features/Conversation', () => ({
   ChatInput: (props: Record<string, unknown>) => {
@@ -46,6 +55,20 @@ vi.mock('@/features/Conversation', () => ({
     }),
 }));
 
+vi.mock('@/features/Conversation/hooks/useAgentMeta', () => ({
+  useAgentMeta: () => ({
+    avatar: 'assistant-avatar',
+    backgroundColor: '#000',
+    title: 'Onboarding Agent',
+  }),
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+  }),
+}));
+
 vi.mock('./QuestionRenderer', () => ({
   default: ({
     currentQuestion,
@@ -65,6 +88,14 @@ vi.mock('./QuestionRenderer', () => ({
   ),
 }));
 
+vi.mock('./ResponseLanguageInlineStep', () => ({
+  default: ({ onDismissNode }: { onDismissNode?: (node: string) => void }) => (
+    <div data-testid="response-language-inline-step">
+      <button onClick={() => onDismissNode?.('responseLanguage')}>dismiss-response-language</button>
+    </div>
+  ),
+}));
+
 describe('AgentOnboardingConversation', () => {
   beforeEach(() => {
     chatInputSpy.mockClear();
@@ -76,6 +107,7 @@ describe('AgentOnboardingConversation', () => {
 
     render(
       <AgentOnboardingConversation
+        activeNode="responseLanguage"
         currentQuestion={
           {
             id: 'response-language-question',
@@ -88,10 +120,8 @@ describe('AgentOnboardingConversation', () => {
     );
 
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
-    expect(screen.getByTestId('message-item-assistant-1')).toContainElement(
-      screen.getByTestId('structured-actions'),
-    );
-    expect(screen.getByTestId('structured-actions')).toHaveTextContent('responseLanguage');
+    expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
+    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
     expect(chatInputSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         allowExpand: false,
@@ -106,6 +136,7 @@ describe('AgentOnboardingConversation', () => {
 
     render(
       <AgentOnboardingConversation
+        activeNode="agentIdentity"
         currentQuestion={
           {
             id: 'agent-identity-question',
@@ -130,6 +161,7 @@ describe('AgentOnboardingConversation', () => {
 
     render(
       <AgentOnboardingConversation
+        activeNode="agentIdentity"
         currentQuestion={
           {
             id: 'agent-identity-question',
@@ -159,6 +191,7 @@ describe('AgentOnboardingConversation', () => {
 
     render(
       <AgentOnboardingConversation
+        activeNode="responseLanguage"
         currentQuestion={
           {
             id: 'response-language-question',
@@ -180,6 +213,7 @@ describe('AgentOnboardingConversation', () => {
 
     render(
       <AgentOnboardingConversation
+        activeNode="agentIdentity"
         currentQuestion={
           {
             id: 'agent-identity-question',
@@ -203,6 +237,7 @@ describe('AgentOnboardingConversation', () => {
     render(
       <AgentOnboardingConversation
         readOnly
+        activeNode="agentIdentity"
         currentQuestion={
           {
             id: 'agent-identity-question',
@@ -217,5 +252,24 @@ describe('AgentOnboardingConversation', () => {
     expect(screen.queryByTestId('chat-input')).not.toBeInTheDocument();
     expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
+  });
+
+  it('renders the built-in response language step even without an AI question surface', () => {
+    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+
+    render(<AgentOnboardingConversation activeNode="responseLanguage" />);
+
+    expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
+    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
+  });
+
+  it('hides the built-in response language step after it is dismissed locally', () => {
+    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+
+    render(<AgentOnboardingConversation activeNode="responseLanguage" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'dismiss-response-language' }));
+
+    expect(screen.queryByTestId('response-language-inline-step')).not.toBeInTheDocument();
   });
 });

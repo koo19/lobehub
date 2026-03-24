@@ -7,7 +7,7 @@ import { Undo2Icon } from 'lucide-react';
 import { memo, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { type Locales } from '@/locales/resources';
+import type { Locales } from '@/locales/resources';
 import { localeOptions, normalizeLocale } from '@/locales/resources';
 import { useGlobalStore } from '@/store/global';
 import { useUserStore } from '@/store/user';
@@ -24,7 +24,7 @@ const ResponseLanguageStep = memo<ResponseLanguageStepProps>(({ onBack, onNext }
   const switchLocale = useGlobalStore((s) => s.switchLocale);
   const setSettings = useUserStore((s) => s.setSettings);
 
-  const [value, setValue] = useState<Locales | ''>(normalizeLocale(navigator.language));
+  const [value, setValue] = useState<Locales | ''>(() => normalizeLocale(navigator.language));
   const [isNavigating, setIsNavigating] = useState(false);
   const isNavigatingRef = useRef(false);
 
@@ -54,7 +54,7 @@ const ResponseLanguageStep = memo<ResponseLanguageStepProps>(({ onBack, onNext }
         ]}
       />
     ),
-    [t, value],
+    [t],
   );
 
   return (
