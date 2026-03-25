@@ -8,6 +8,7 @@ export const UserInteractionManifest: BuiltinToolManifest = {
     {
       description:
         'Present a question to the user with either structured form fields or freeform input. Returns the interaction request in pending state.',
+      humanIntervention: 'required',
       name: UserInteractionApiName.askUserQuestion,
       parameters: {
         properties: {
