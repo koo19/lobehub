@@ -190,6 +190,229 @@ export class ConversationControlActionImpl {
     }
   };
 
+  submitToolInteraction = async (
+    toolMessageId: string,
+    response: Record<string, unknown>,
+    context?: ConversationContext,
+  ): Promise<void> => {
+    const { internal_execAgentRuntime, startOperation, completeOperation } = this.#get();
+
+    const effectiveContext: ConversationContext = context ?? {
+      agentId: this.#get().activeAgentId,
+      topicId: this.#get().activeTopicId,
+      threadId: this.#get().activeThreadId,
+    };
+
+    const { agentId, topicId, threadId, scope } = effectiveContext;
+
+    const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
+    if (!toolMessage) return;
+
+    const { operationId } = startOperation({
+      type: 'submitToolInteraction',
+      context: {
+        agentId,
+        topicId: topicId ?? undefined,
+        threadId: threadId ?? undefined,
+        scope,
+        messageId: toolMessageId,
+      },
+    });
+
+    const optimisticContext = { operationId };
+
+    await this.#get().optimisticUpdatePlugin(
+      toolMessageId,
+      { intervention: { status: 'approved' } },
+      optimisticContext,
+    );
+
+    const toolContent = JSON.stringify({ response, type: 'submitted' });
+    await this.#get().optimisticUpdateMessageContent(
+      toolMessageId,
+      toolContent,
+      undefined,
+      optimisticContext,
+    );
+
+    const chatKey = messageMapKey({ agentId, topicId, threadId, scope });
+    const currentMessages = displayMessageSelectors.getDisplayMessagesByKey(chatKey)(this.#get());
+
+    const { state, context: initialContext } = this.#get().internal_createAgentState({
+      messages: currentMessages,
+      parentMessageId: toolMessageId,
+      agentId,
+      topicId,
+      threadId: threadId ?? undefined,
+      operationId,
+    });
+
+    const agentRuntimeContext: AgentRuntimeContext = {
+      ...initialContext,
+      phase: 'human_approved_tool',
+      payload: {
+        approvedToolCall: toolMessage.plugin,
+        parentMessageId: toolMessageId,
+        skipCreateToolMessage: true,
+      },
+    };
+
+    try {
+      await internal_execAgentRuntime({
+        context: effectiveContext,
+        messages: currentMessages,
+        parentMessageId: toolMessageId,
+        parentMessageType: 'tool',
+        initialState: state,
+        initialContext: agentRuntimeContext,
+        parentOperationId: operationId,
+      });
+      completeOperation(operationId);
+    } catch (error) {
+      const err = error as Error;
+      console.error('[submitToolInteraction] Error executing agent runtime:', err);
+      this.#get().failOperation(operationId, {
+        type: 'submitToolInteraction',
+        message: err.message || 'Unknown error',
+      });
+    }
+  };
+
+  skipToolInteraction = async (
+    toolMessageId: string,
+    reason?: string,
+    context?: ConversationContext,
+  ): Promise<void> => {
+    const { internal_execAgentRuntime, startOperation, completeOperation } = this.#get();
+
+    const effectiveContext: ConversationContext = context ?? {
+      agentId: this.#get().activeAgentId,
+      topicId: this.#get().activeTopicId,
+      threadId: this.#get().activeThreadId,
+    };
+
+    const { agentId, topicId, threadId, scope } = effectiveContext;
+
+    const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
+    if (!toolMessage) return;
+
+    const { operationId } = startOperation({
+      type: 'skipToolInteraction',
+      context: {
+        agentId,
+        topicId: topicId ?? undefined,
+        threadId: threadId ?? undefined,
+        scope,
+        messageId: toolMessageId,
+      },
+    });
+
+    const optimisticContext = { operationId };
+
+    await this.#get().optimisticUpdatePlugin(
+      toolMessageId,
+      { intervention: { status: 'approved' } },
+      optimisticContext,
+    );
+
+    const toolContent = JSON.stringify({ reason, type: 'skipped' });
+    await this.#get().optimisticUpdateMessageContent(
+      toolMessageId,
+      toolContent,
+      undefined,
+      optimisticContext,
+    );
+
+    const chatKey = messageMapKey({ agentId, topicId, threadId, scope });
+    const currentMessages = displayMessageSelectors.getDisplayMessagesByKey(chatKey)(this.#get());
+
+    const { state, context: initialContext } = this.#get().internal_createAgentState({
+      messages: currentMessages,
+      parentMessageId: toolMessageId,
+      agentId,
+      topicId,
+      threadId: threadId ?? undefined,
+      operationId,
+    });
+
+    const agentRuntimeContext: AgentRuntimeContext = {
+      ...initialContext,
+      phase: 'human_approved_tool',
+      payload: {
+        approvedToolCall: toolMessage.plugin,
+        parentMessageId: toolMessageId,
+        skipCreateToolMessage: true,
+      },
+    };
+
+    try {
+      await internal_execAgentRuntime({
+        context: effectiveContext,
+        messages: currentMessages,
+        parentMessageId: toolMessageId,
+        parentMessageType: 'tool',
+        initialState: state,
+        initialContext: agentRuntimeContext,
+        parentOperationId: operationId,
+      });
+      completeOperation(operationId);
+    } catch (error) {
+      const err = error as Error;
+      console.error('[skipToolInteraction] Error executing agent runtime:', err);
+      this.#get().failOperation(operationId, {
+        type: 'skipToolInteraction',
+        message: err.message || 'Unknown error',
+      });
+    }
+  };
+
+  cancelToolInteraction = async (
+    toolMessageId: string,
+    context?: ConversationContext,
+  ): Promise<void> => {
+    const { startOperation, completeOperation } = this.#get();
+
+    const effectiveContext: ConversationContext = context ?? {
+      agentId: this.#get().activeAgentId,
+      topicId: this.#get().activeTopicId,
+      threadId: this.#get().activeThreadId,
+    };
+
+    const { agentId, topicId, threadId, scope } = effectiveContext;
+
+    const toolMessage = dbMessageSelectors.getDbMessageById(toolMessageId)(this.#get());
+    if (!toolMessage) return;
+
+    const { operationId } = startOperation({
+      type: 'cancelToolInteraction',
+      context: {
+        agentId,
+        topicId: topicId ?? undefined,
+        threadId: threadId ?? undefined,
+        scope,
+        messageId: toolMessageId,
+      },
+    });
+
+    const optimisticContext = { operationId };
+
+    await this.#get().optimisticUpdatePlugin(
+      toolMessageId,
+      { intervention: { rejectedReason: 'User cancelled interaction', status: 'rejected' } },
+      optimisticContext,
+    );
+
+    const toolContent = JSON.stringify({ type: 'cancelled' });
+    await this.#get().optimisticUpdateMessageContent(
+      toolMessageId,
+      toolContent,
+      undefined,
+      optimisticContext,
+    );
+
+    completeOperation(operationId);
+  };
+
   rejectToolCalling = async (
     messageId: string,
     reason?: string,

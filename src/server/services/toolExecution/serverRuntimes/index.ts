@@ -19,6 +19,7 @@ import { skillStoreRuntime } from './skillStore';
 import { toolsActivatorRuntime } from './tools';
 import { topicReferenceRuntime } from './topicReference';
 import { type ServerRuntimeFactory, type ServerRuntimeRegistration } from './types';
+import { userInteractionRuntime } from './userInteraction';
 import { webBrowsingRuntime } from './webBrowsing';
 import { webOnboardingRuntime } from './webOnboarding';
 
@@ -50,6 +51,7 @@ registerRuntimes([
   localSystemRuntime,
   remoteDeviceRuntime,
   topicReferenceRuntime,
+  userInteractionRuntime,
   webOnboardingRuntime,
 ]);
 

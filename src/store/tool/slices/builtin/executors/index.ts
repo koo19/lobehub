@@ -23,6 +23,7 @@ import { pageAgentExecutor } from './lobe-page-agent';
 import { skillStoreExecutor } from './lobe-skill-store';
 import { skillsExecutor } from './lobe-skills';
 import { toolsActivatorExecutor } from './lobe-tools';
+import { userInteractionExecutor } from './lobe-user-interaction';
 import { webBrowsing } from './lobe-web-browsing';
 import { webOnboardingExecutor } from './lobe-web-onboarding';
 
@@ -145,6 +146,7 @@ registerExecutors([
   skillsExecutor,
   toolsActivatorExecutor,
   topicReferenceExecutor,
+  userInteractionExecutor,
   webOnboardingExecutor,
   webBrowsing,
 ]);
