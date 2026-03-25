@@ -1,3 +1,5 @@
+import { AgentDocumentsIdentifier } from '@lobechat/builtin-tool-agent-documents';
+
 import type { BuiltinAgentDefinition } from '../../types';
 import { BUILTIN_AGENT_SLUGS } from '../../types';
 import { createSystemRole } from './systemRole';
@@ -10,7 +12,7 @@ import { createSystemRole } from './systemRole';
 export const INBOX: BuiltinAgentDefinition = {
   avatar: '/avatars/lobe-ai.png',
   runtime: (ctx) => ({
-    plugins: ctx.plugins || [],
+    plugins: [AgentDocumentsIdentifier, ...(ctx.plugins || [])],
     systemRole: createSystemRole(ctx.userLocale),
   }),
 

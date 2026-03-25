@@ -1,7 +1,6 @@
 'use client';
 
-import type { UserAgentOnboardingNode, UserAgentOnboardingQuestion } from '@lobechat/types';
-import { Avatar, Flexbox, Markdown, Text } from '@lobehub/ui';
+import { Avatar, Button, Flexbox, Markdown, Text } from '@lobehub/ui';
 import { Divider } from 'antd';
 import type { CSSProperties } from 'react';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
@@ -21,16 +20,12 @@ import { userService } from '@/services/user';
 import { useUserStore } from '@/store/user';
 import { isDev } from '@/utils/env';
 
-import QuestionRenderer from './QuestionRenderer';
-import { useQuestionRendererRuntime } from './questionRendererRuntime';
-import QuestionRendererView from './QuestionRendererView';
-import ResponseLanguageInlineStep from './ResponseLanguageInlineStep';
 import { staticStyle } from './staticStyle';
 
 const assistantLikeRoles = new Set(['assistant', 'assistantGroup', 'supervisor']);
 
 interface AgentOnboardingConversationProps {
-  activeNode?: UserAgentOnboardingNode;
+  activeNode?: string;
   readOnly?: boolean;
 }
 
@@ -52,11 +47,9 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
     const agentMeta = useAgentMeta();
     const navigate = useNavigate();
     const refreshUserState = useUserStore((s) => s.refreshUserState);
-    const questionRendererRuntime = useQuestionRendererRuntime();
     const [isFinishing, setIsFinishing] = useState(false);
     const isFinishingRef = useRef(false);
     const displayMessages = useConversationStore(conversationSelectors.displayMessages);
-    const shouldRenderResponseLanguageStep = !readOnly && activeNode === 'responseLanguage';
 
     const lastAssistantMessageId = useMemo(() => {
       for (let i = displayMessages.length - 1; i >= 0; i--) {
@@ -71,59 +64,6 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
       const first = displayMessages[0];
       return assistantLikeRoles.has(first.role);
     }, [displayMessages]);
-
-    const presetGreetingQuestion = useMemo<UserAgentOnboardingQuestion>(
-      () => ({
-        fields: [
-          {
-            key: 'name',
-            kind: 'text' as const,
-            label: t('agent.greeting.nameLabel'),
-            placeholder: t('agent.greeting.namePlaceholder'),
-          },
-          {
-            key: 'vibe',
-            kind: 'text' as const,
-            label: t('agent.greeting.vibeLabel'),
-            placeholder: t('agent.greeting.vibePlaceholder'),
-          },
-          {
-            key: 'emoji',
-            kind: 'emoji' as const,
-            label: t('agent.greeting.emojiLabel'),
-          },
-        ],
-        id: 'greeting-agent-identity',
-        mode: 'form',
-        node: 'agentIdentity',
-        prompt: t('agent.greeting.prompt'),
-        submitMode: 'message',
-      }),
-      [t],
-    );
-
-    const completionQuestion = useMemo<UserAgentOnboardingQuestion>(
-      () => ({
-        choices: [
-          {
-            id: 'finish-onboarding',
-            label: t('finish'),
-            payload: {
-              kind: 'message',
-              message: 'finish-onboarding',
-            },
-            style: 'primary',
-          },
-        ],
-        description: t('agent.summaryHint'),
-        id: 'finish-onboarding',
-        mode: 'button_group',
-        node: 'summary',
-        prompt: t('finish'),
-        submitMode: 'message',
-      }),
-      [t],
-    );
 
     const handleFinishOnboarding = useCallback(async () => {
       if (isFinishingRef.current) return;
@@ -146,35 +86,20 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
     const itemContent = useCallback(
       (index: number, id: string) => {
         const isLatestItem = displayMessages.length === index + 1;
-
-        const effectiveQuestion = !readOnly && isGreetingState ? presetGreetingQuestion : undefined;
-        const effectiveStep = shouldRenderResponseLanguageStep ? 'responseLanguage' : undefined;
         const showCompletionCTA = !readOnly && activeNode === 'summary';
+
         const completionRender = !showCompletionCTA ? undefined : (
           <div className={staticStyle.inlineQuestion}>
-            <QuestionRendererView
-              {...questionRendererRuntime}
-              currentQuestion={completionQuestion}
-              loading={questionRendererRuntime.loading || isFinishing}
-              onSendMessage={handleFinishOnboarding}
-            />
+            <Flexbox gap={8}>
+              <Text type={'secondary'}>{t('agent.summaryHint')}</Text>
+              <Button loading={isFinishing} type={'primary'} onClick={handleFinishOnboarding}>
+                {t('finish')}
+              </Button>
+            </Flexbox>
           </div>
         );
 
-        const endRender =
-          id !== lastAssistantMessageId ? undefined : effectiveStep ? (
-            <div className={staticStyle.inlineQuestion}>
-              <ResponseLanguageInlineStep />
-            </div>
-          ) : showCompletionCTA ? (
-            completionRender
-          ) : effectiveQuestion ? (
-            <div className={staticStyle.inlineQuestion}>
-              <QuestionRenderer currentQuestion={effectiveQuestion} />
-            </div>
-          ) : (
-            completionRender
-          );
+        const endRender = id !== lastAssistantMessageId ? undefined : completionRender;
 
         if (isGreetingState && index === 0) {
           const message = displayMessages[0];
@@ -218,14 +143,11 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
         displayMessages,
         isGreetingState,
         lastAssistantMessageId,
-        presetGreetingQuestion,
         readOnly,
         activeNode,
-        completionQuestion,
         handleFinishOnboarding,
         isFinishing,
-        questionRendererRuntime,
-        shouldRenderResponseLanguageStep,
+        t,
       ],
     );
 

@@ -90,55 +90,6 @@ vi.mock('@/store/user', () => ({
     }),
 }));
 
-vi.mock('./QuestionRenderer', () => ({
-  default: ({
-    currentQuestion,
-  }: {
-    currentQuestion?: { id: string; node?: string; prompt?: string };
-  }) => (
-    <div data-testid="structured-actions">
-      <div>{currentQuestion?.id}</div>
-      <div>{currentQuestion?.node}</div>
-      <div>{currentQuestion?.prompt}</div>
-    </div>
-  ),
-}));
-
-vi.mock('./questionRendererRuntime', () => ({
-  useQuestionRendererRuntime: () => ({
-    fallbackQuestionDescription: 'agent.summaryHint',
-    fallbackTextFieldLabel: 'agent.summaryHint',
-    fallbackTextFieldPlaceholder: 'agent.summaryHint',
-    loading: false,
-    nextLabel: 'next',
-    onChangeResponseLanguage: vi.fn(),
-    onSendMessage: vi.fn(),
-    renderEmojiPicker: vi.fn(),
-    responseLanguageOptions: [],
-    submitLabel: 'next',
-  }),
-}));
-
-vi.mock('./QuestionRendererView', () => ({
-  default: ({
-    currentQuestion,
-    onSendMessage,
-  }: {
-    currentQuestion?: { id: string; prompt?: string };
-    onSendMessage?: (message: string) => Promise<void> | void;
-  }) => (
-    <div data-testid="completion-actions">
-      <div>{currentQuestion?.id}</div>
-      <div>{currentQuestion?.prompt}</div>
-      <button onClick={() => onSendMessage?.('finish-onboarding')}>complete</button>
-    </div>
-  ),
-}));
-
-vi.mock('./ResponseLanguageInlineStep', () => ({
-  default: () => <div data-testid="response-language-inline-step" />,
-}));
-
 describe('AgentOnboardingConversation', () => {
   beforeEach(() => {
     chatInputSpy.mockClear();
@@ -146,22 +97,6 @@ describe('AgentOnboardingConversation', () => {
     mockState.displayMessages = [];
     navigateSpy.mockReset();
     refreshUserStateSpy.mockReset();
-  });
-
-  it('renders the response language step and disables expand + runtime config in chat input', () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
-
-    render(<AgentOnboardingConversation activeNode="responseLanguage" />);
-
-    expect(screen.getByTestId('chat-list')).toBeInTheDocument();
-    expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
-    expect(chatInputSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        allowExpand: false,
-        leftActions: [],
-        showRuntimeConfig: false,
-      }),
-    );
   });
 
   it('renders a read-only transcript when viewing a historical topic', () => {
@@ -173,22 +108,13 @@ describe('AgentOnboardingConversation', () => {
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
   });
 
-  it('renders the built-in response language step even without an AI question surface', () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
-
-    render(<AgentOnboardingConversation activeNode="responseLanguage" />);
-
-    expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
-    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
-  });
-
   it('renders the completion CTA on the summary step', () => {
     mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
 
     render(<AgentOnboardingConversation activeNode="summary" />);
 
-    expect(screen.getByTestId('completion-actions')).toHaveTextContent('finish-onboarding');
-    expect(screen.getByTestId('completion-actions')).toHaveTextContent('finish');
+    expect(screen.getByText('finish')).toBeInTheDocument();
+    expect(screen.getByText('agent.summaryHint')).toBeInTheDocument();
   });
 
   it('finishes onboarding and navigates to inbox when the completion CTA is clicked', async () => {
@@ -198,12 +124,34 @@ describe('AgentOnboardingConversation', () => {
 
     render(<AgentOnboardingConversation activeNode="summary" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'complete' }));
+    fireEvent.click(screen.getByText('finish'));
 
     await waitFor(() => {
       expect(finishOnboardingSpy).toHaveBeenCalledTimes(1);
       expect(refreshUserStateSpy).toHaveBeenCalledTimes(1);
       expect(navigateSpy).toHaveBeenCalledWith('/');
     });
+  });
+
+  it('disables expand and runtime config in chat input', () => {
+    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+
+    render(<AgentOnboardingConversation activeNode="agentIdentity" />);
+
+    expect(chatInputSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowExpand: false,
+        leftActions: [],
+        showRuntimeConfig: false,
+      }),
+    );
+  });
+
+  it('does not show completion CTA when not on summary step', () => {
+    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+
+    render(<AgentOnboardingConversation activeNode="agentIdentity" />);
+
+    expect(screen.queryByText('finish')).not.toBeInTheDocument();
   });
 });
