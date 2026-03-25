@@ -133,9 +133,6 @@ const AgentOnboardingPage = memo(() => {
               <AgentOnboardingConversation
                 activeNode={viewingHistoricalTopic ? undefined : currentContext.activeNode}
                 readOnly={viewingHistoricalTopic}
-                currentQuestion={
-                  viewingHistoricalTopic ? undefined : currentContext.currentQuestion
-                }
               />
             </ErrorBoundary>
           </OnboardingConversationProvider>

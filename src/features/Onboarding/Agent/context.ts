@@ -1,13 +1,12 @@
 import type { UserAgentOnboardingNode } from '@lobechat/types';
 import { AGENT_ONBOARDING_NODES } from '@lobechat/types';
 
-import type { UserAgentOnboarding, UserAgentOnboardingQuestion } from '@/types/user';
+import type { UserAgentOnboarding } from '@/types/user';
 
 export interface AgentOnboardingBootstrapContext {
   agentOnboarding: UserAgentOnboarding;
   context: {
     activeNode?: UserAgentOnboardingNode;
-    currentQuestion?: UserAgentOnboardingQuestion;
   };
   topicId: string;
 }
@@ -25,19 +24,6 @@ const getActiveNodeFromState = (state?: UserAgentOnboarding) => {
   return AGENT_ONBOARDING_NODES.find((node) => !completedNodeSet.has(node));
 };
 
-const resolveQuestionFromSurface = (
-  state: UserAgentOnboarding | undefined,
-  activeNode: UserAgentOnboardingNode | undefined,
-) => {
-  const questionSurface = state?.questionSurface;
-
-  if (!questionSurface) return undefined;
-  if (questionSurface.node !== activeNode) return undefined;
-  if (state?.completedNodes?.includes(questionSurface.node)) return undefined;
-
-  return questionSurface.question;
-};
-
 export const resolveAgentOnboardingContext = ({
   bootstrapContext,
   storedAgentOnboarding,
@@ -47,17 +33,8 @@ export const resolveAgentOnboardingContext = ({
     bootstrapContext?.context.activeNode ||
     getActiveNodeFromState(bootstrapContext?.agentOnboarding);
 
-  const bootstrapCurrentQuestion =
-    bootstrapContext?.context.currentQuestion?.node === activeNode
-      ? bootstrapContext?.context.currentQuestion
-      : undefined;
-
   return {
     activeNode,
-    currentQuestion:
-      bootstrapCurrentQuestion ||
-      resolveQuestionFromSurface(storedAgentOnboarding, activeNode) ||
-      resolveQuestionFromSurface(bootstrapContext?.agentOnboarding, activeNode),
     topicId: bootstrapContext?.topicId ?? storedAgentOnboarding?.activeTopicId,
   };
 };

@@ -4,7 +4,7 @@ import type { UserAgentOnboardingNode, UserAgentOnboardingQuestion } from '@lobe
 import { Avatar, Flexbox, Markdown, Text } from '@lobehub/ui';
 import { Divider } from 'antd';
 import type { CSSProperties } from 'react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -31,7 +31,6 @@ const assistantLikeRoles = new Set(['assistant', 'assistantGroup', 'supervisor']
 
 interface AgentOnboardingConversationProps {
   activeNode?: UserAgentOnboardingNode;
-  currentQuestion?: UserAgentOnboardingQuestion;
   readOnly?: boolean;
 }
 
@@ -48,7 +47,7 @@ const scrollContainerStyle: CSSProperties = {
 };
 
 const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
-  ({ activeNode, currentQuestion, readOnly }) => {
+  ({ activeNode, readOnly }) => {
     const { t } = useTranslation('onboarding');
     const agentMeta = useAgentMeta();
     const navigate = useNavigate();
@@ -57,24 +56,6 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
     const [isFinishing, setIsFinishing] = useState(false);
     const isFinishingRef = useRef(false);
     const displayMessages = useConversationStore(conversationSelectors.displayMessages);
-    const questionSignature = useMemo(
-      () => JSON.stringify({ activeNode, currentQuestion: currentQuestion || null }),
-      [activeNode, currentQuestion],
-    );
-    const lastQuestionSignatureRef = useRef(questionSignature);
-    const messageCountAtQuestionRef = useRef(displayMessages.length);
-
-    useEffect(() => {
-      if (lastQuestionSignatureRef.current === questionSignature) return;
-
-      lastQuestionSignatureRef.current = questionSignature;
-      messageCountAtQuestionRef.current = displayMessages.length;
-    }, [questionSignature, displayMessages.length]);
-
-    const dismissedBySubmit = displayMessages.length > messageCountAtQuestionRef.current;
-
-    const visibleQuestion =
-      readOnly || !currentQuestion || dismissedBySubmit ? undefined : currentQuestion;
     const shouldRenderResponseLanguageStep = !readOnly && activeNode === 'responseLanguage';
 
     const lastAssistantMessageId = useMemo(() => {
@@ -166,12 +147,8 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
       (index: number, id: string) => {
         const isLatestItem = displayMessages.length === index + 1;
 
-        const effectiveQuestion =
-          !readOnly && isGreetingState && !currentQuestion
-            ? presetGreetingQuestion
-            : visibleQuestion;
-        const effectiveStep =
-          shouldRenderResponseLanguageStep && !dismissedBySubmit ? 'responseLanguage' : undefined;
+        const effectiveQuestion = !readOnly && isGreetingState ? presetGreetingQuestion : undefined;
+        const effectiveStep = shouldRenderResponseLanguageStep ? 'responseLanguage' : undefined;
         const showCompletionCTA = !readOnly && activeNode === 'summary';
         const completionRender = !showCompletionCTA ? undefined : (
           <div className={staticStyle.inlineQuestion}>
@@ -238,20 +215,17 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
       },
       [
         agentMeta,
-        dismissedBySubmit,
         displayMessages,
         isGreetingState,
         lastAssistantMessageId,
         presetGreetingQuestion,
         readOnly,
-        currentQuestion,
         activeNode,
         completionQuestion,
         handleFinishOnboarding,
         isFinishing,
         questionRendererRuntime,
         shouldRenderResponseLanguageStep,
-        visibleQuestion,
       ],
     );
 

@@ -30,11 +30,6 @@ export const webOnboardingRuntime: ServerRuntimeRegistration = {
 
             return createWebOnboardingToolResult(result);
           }
-          case 'askUserQuestion': {
-            const result = await service.askQuestion(args as any);
-
-            return createWebOnboardingToolResult(result);
-          }
           case 'completeCurrentStep': {
             const result = await service.completeCurrentStep(args.node as any);
 

@@ -7,7 +7,6 @@ import { webOnboardingExecutor } from './lobe-web-onboarding';
 
 vi.mock('@/services/user', () => ({
   userService: {
-    askOnboardingQuestion: vi.fn(),
     completeOnboardingStep: vi.fn(),
     finishOnboarding: vi.fn(),
     getOnboardingState: vi.fn(),
@@ -30,31 +29,25 @@ describe('webOnboardingExecutor', () => {
     } as any);
   });
 
-  it('refreshes user onboarding state after askUserQuestion', async () => {
+  it('refreshes user onboarding state after saveAnswer', async () => {
     const refreshUserState = vi.fn().mockResolvedValue(undefined);
 
     vi.mocked(useUserStore.getState).mockReturnValue({
       refreshUserState,
     } as any);
-    vi.mocked(userService.askOnboardingQuestion).mockResolvedValue({
-      content: 'Saved the current question for "agentIdentity".',
-      currentQuestion: {
-        id: 'agent_identity_001',
-        mode: 'button_group',
-        node: 'agentIdentity',
-        prompt: '贾维斯的气质应该是什么样的？',
-      },
+    vi.mocked(userService.saveOnboardingAnswer).mockResolvedValue({
+      content: 'Saved.',
       success: true,
-    });
+    } as any);
 
-    await webOnboardingExecutor.askUserQuestion(
+    await webOnboardingExecutor.saveAnswer(
       {
-        node: 'agentIdentity',
-        question: {
-          id: 'agent_identity_001',
-          mode: 'button_group',
-          prompt: '贾维斯的气质应该是什么样的？',
-        },
+        updates: [
+          {
+            node: 'agentIdentity',
+            patch: { emoji: '🫖', name: '小七', nature: 'an AI housemate', vibe: 'warm' },
+          },
+        ],
       },
       {} as any,
     );

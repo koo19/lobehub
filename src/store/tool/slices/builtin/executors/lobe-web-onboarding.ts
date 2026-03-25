@@ -44,23 +44,6 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     return createWebOnboardingToolResult(result);
   };
 
-  askUserQuestion = async (
-    params: {
-      node: Parameters<typeof userService.askOnboardingQuestion>[0]['node'];
-      question: Parameters<typeof userService.askOnboardingQuestion>[0]['question'];
-    },
-    _ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> => {
-    const result = await userService.askOnboardingQuestion(params);
-    await syncUserOnboardingState();
-
-    return {
-      content: result.content,
-      state: result,
-      success: result.success,
-    };
-  };
-
   completeCurrentStep = async (
     params: {
       node: Parameters<typeof userService.completeOnboardingStep>[0];

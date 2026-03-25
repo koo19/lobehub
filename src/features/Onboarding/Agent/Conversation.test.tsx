@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -148,26 +148,13 @@ describe('AgentOnboardingConversation', () => {
     refreshUserStateSpy.mockReset();
   });
 
-  it('renders structured actions inside the assistant message and disables expand + runtime config in chat input', () => {
+  it('renders the response language step and disables expand + runtime config in chat input', () => {
     mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
 
-    render(
-      <AgentOnboardingConversation
-        activeNode="responseLanguage"
-        currentQuestion={
-          {
-            id: 'response-language-question',
-            mode: 'select',
-            node: 'responseLanguage',
-            prompt: '你希望我默认用什么语言回复你？',
-          } as any
-        }
-      />,
-    );
+    render(<AgentOnboardingConversation activeNode="responseLanguage" />);
 
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
     expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
-    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
     expect(chatInputSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         allowExpand: false,
@@ -177,145 +164,12 @@ describe('AgentOnboardingConversation', () => {
     );
   });
 
-  it('passes the current question to the renderer', () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
-
-    render(
-      <AgentOnboardingConversation
-        activeNode="agentIdentity"
-        currentQuestion={
-          {
-            id: 'agent-identity-question',
-            mode: 'form',
-            node: 'agentIdentity',
-            prompt: '先把我定下来吧。',
-          } as any
-        }
-      />,
-    );
-
-    expect(screen.getByTestId('structured-actions')).toHaveTextContent('agent-identity-question');
-    expect(screen.getByTestId('structured-actions')).toHaveTextContent('先把我定下来吧。');
-  });
-
-  it('renders the question under the last assistant-like message instead of the last message', () => {
-    mockState.displayMessages = [
-      { id: 'assistant-1', role: 'assistant' },
-      { id: 'assistant-group-1', role: 'assistantGroup' },
-      { id: 'user-1', role: 'user' },
-    ];
-
-    render(
-      <AgentOnboardingConversation
-        activeNode="agentIdentity"
-        currentQuestion={
-          {
-            id: 'agent-identity-question',
-            mode: 'form',
-            node: 'agentIdentity',
-            prompt: '先把我定下来吧。',
-          } as any
-        }
-      />,
-    );
-
-    expect(
-      within(screen.getByTestId('message-item-assistant-group-1')).getByTestId(
-        'structured-actions',
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByTestId('message-item-assistant-1')).queryByTestId('structured-actions'),
-    ).not.toBeInTheDocument();
-    expect(
-      within(screen.getByTestId('message-item-user-1')).queryByTestId('structured-actions'),
-    ).not.toBeInTheDocument();
-  });
-
-  it('does not inject a local assistant placeholder when the conversation has no messages', async () => {
-    mockState.displayMessages = [];
-
-    render(
-      <AgentOnboardingConversation
-        activeNode="responseLanguage"
-        currentQuestion={
-          {
-            id: 'response-language-question',
-            mode: 'select',
-            node: 'responseLanguage',
-            prompt: '你希望我默认用什么语言回复你？',
-          } as any
-        }
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('chat-list')).toBeInTheDocument();
-    });
-  });
-
-  it('hides the current question after a new message is submitted', () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
-
-    const { rerender } = render(
-      <AgentOnboardingConversation
-        activeNode="agentIdentity"
-        currentQuestion={
-          {
-            id: 'agent-identity-question',
-            mode: 'form',
-            node: 'agentIdentity',
-            prompt: '先把我定下来吧。',
-          } as any
-        }
-      />,
-    );
-
-    expect(screen.getByTestId('structured-actions')).toBeInTheDocument();
-
-    mockState.displayMessages = [
-      { id: 'assistant-1', role: 'assistant' },
-      { id: 'user-1', role: 'user' },
-    ];
-
-    rerender(
-      <AgentOnboardingConversation
-        activeNode="agentIdentity"
-        currentQuestion={
-          {
-            id: 'agent-identity-question',
-            mode: 'form',
-            node: 'agentIdentity',
-            prompt: '先把我定下来吧。',
-          } as any
-        }
-      />,
-    );
-
-    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
-    expect(screen.getByTestId('chat-list')).toBeInTheDocument();
-  });
-
   it('renders a read-only transcript when viewing a historical topic', () => {
     mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
 
-    render(
-      <AgentOnboardingConversation
-        readOnly
-        activeNode="agentIdentity"
-        currentQuestion={
-          {
-            id: 'agent-identity-question',
-            mode: 'form',
-            node: 'agentIdentity',
-            prompt: '先把我定下来吧。',
-          } as any
-        }
-      />,
-    );
+    render(<AgentOnboardingConversation readOnly activeNode="agentIdentity" />);
 
     expect(screen.queryByTestId('chat-input')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
   });
 
@@ -326,25 +180,6 @@ describe('AgentOnboardingConversation', () => {
 
     expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
     expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
-  });
-
-  it('hides the built-in response language step after a new message is submitted', () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
-
-    const { rerender } = render(<AgentOnboardingConversation activeNode="responseLanguage" />);
-
-    expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
-
-    mockState.displayMessages = [
-      { id: 'assistant-1', role: 'assistant' },
-      { id: 'user-1', role: 'user' },
-    ];
-
-    // Pass readOnly={false} (same behavioral effect as omitting it) to bypass memo's
-    // shallow-equal check, since the mock store has no subscription mechanism.
-    rerender(<AgentOnboardingConversation activeNode="responseLanguage" readOnly={false} />);
-
-    expect(screen.queryByTestId('response-language-inline-step')).not.toBeInTheDocument();
   });
 
   it('renders the completion CTA on the summary step', () => {

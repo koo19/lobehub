@@ -6,7 +6,6 @@ import {
   type UserAgentOnboarding,
   type UserAgentOnboardingContext,
   type UserAgentOnboardingNode,
-  type UserAgentOnboardingQuestionDraft,
   type UserAgentOnboardingUpdate,
   type UserGuide,
   type UserInitializationState,
@@ -49,13 +48,6 @@ export class UserService {
     return lambdaClient.user.saveOnboardingAnswer.mutate(
       params as Parameters<typeof lambdaClient.user.saveOnboardingAnswer.mutate>[0],
     );
-  };
-
-  askOnboardingQuestion = async (params: {
-    node: UserAgentOnboardingNode;
-    question: UserAgentOnboardingQuestionDraft;
-  }) => {
-    return lambdaClient.user.askOnboardingQuestion.mutate(params);
   };
 
   completeOnboardingStep = async (node: UserAgentOnboardingNode) => {

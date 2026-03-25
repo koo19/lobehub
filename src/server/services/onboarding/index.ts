@@ -6,8 +6,6 @@ import type {
   UserAgentOnboardingControl,
   UserAgentOnboardingDraft,
   UserAgentOnboardingNode,
-  UserAgentOnboardingQuestion,
-  UserAgentOnboardingQuestionDraft,
   UserAgentOnboardingUpdate,
 } from '@lobechat/types';
 import { AGENT_ONBOARDING_NODES, MAX_ONBOARDING_STEPS } from '@lobechat/types';
@@ -34,7 +32,6 @@ type OnboardingPatchInput = Record<string, unknown>;
 
 const ONBOARDING_TOOL_NAMES = [
   'getOnboardingState',
-  'askUserQuestion',
   'saveAnswer',
   'completeCurrentStep',
   'returnToOnboarding',
@@ -79,7 +76,6 @@ interface OnboardingError {
 interface CommitStepResult {
   content: string;
   control: UserAgentOnboardingControl;
-  currentQuestion?: UserAgentOnboardingQuestion;
   success: boolean;
 }
 
@@ -89,7 +85,6 @@ interface ProposePatchResult {
   committedValue?: unknown;
   content: string;
   control?: UserAgentOnboardingControl;
-  currentQuestion?: UserAgentOnboardingQuestion;
   draft: UserAgentOnboardingDraft;
   error?: OnboardingError;
   mismatch?: boolean;
@@ -99,25 +94,12 @@ interface ProposePatchResult {
   success: boolean;
 }
 
-interface AskQuestionResult {
-  activeNode?: UserAgentOnboardingNode;
-  content: string;
-  control?: UserAgentOnboardingControl;
-  currentQuestion?: UserAgentOnboardingQuestion;
-  mismatch?: boolean;
-  requestedNode?: UserAgentOnboardingNode;
-  storedQuestionId?: string;
-  success: boolean;
-}
-
 const buildOnboardingControl = ({
   activeNode,
   activeNodeDraftState,
-  currentQuestion,
 }: {
   activeNode?: UserAgentOnboardingNode;
   activeNodeDraftState?: { missingFields?: string[]; status: 'complete' | 'empty' | 'partial' };
-  currentQuestion?: UserAgentOnboardingQuestion;
 }): UserAgentOnboardingControl => {
   const missingFields = activeNodeDraftState?.missingFields ?? [];
   const canCompleteCurrentStep =
@@ -127,10 +109,9 @@ const buildOnboardingControl = ({
 
   if (activeNode) {
     if (activeNode === 'summary') {
-      allowedTools.push('askUserQuestion');
-      if (currentQuestion) allowedTools.push('finishOnboarding');
+      allowedTools.push('finishOnboarding');
     } else {
-      allowedTools.push('saveAnswer', 'askUserQuestion');
+      allowedTools.push('saveAnswer');
       if (canCompleteCurrentStep) allowedTools.push('completeCurrentStep');
     }
   }
@@ -152,11 +133,6 @@ const getActiveNode = (state: Pick<UserAgentOnboarding, 'completedNodes' | 'fini
 
   return getFirstIncompleteNode(state.completedNodes ?? []);
 };
-
-const attachNodeToQuestion = (
-  node: UserAgentOnboardingNode,
-  question: UserAgentOnboardingQuestionDraft,
-): UserAgentOnboardingQuestion => ({ ...question, node });
 
 export class OnboardingService {
   private readonly agentDocumentsService: AgentDocumentsService;
@@ -315,11 +291,6 @@ export class OnboardingService {
       ...nextState,
       completedNodes: dedupeNodes((nextState.completedNodes ?? []).filter(isValidNode)),
       draft: nextState.draft ?? {},
-      questionSurface:
-        nextState.questionSurface?.node &&
-        getActiveNode(nextState) === nextState.questionSurface.node
-          ? nextState.questionSurface
-          : undefined,
       profile: nextState.profile ?? {},
       version: nextState.version ?? CURRENT_ONBOARDING_VERSION,
     };
@@ -431,9 +402,6 @@ export class OnboardingService {
     };
     const activeNode = getActiveNode(state);
     const draft = state.draft ?? {};
-    const questionSurface = state.questionSurface;
-    const currentQuestion =
-      questionSurface && questionSurface.node === activeNode ? questionSurface.question : undefined;
     const activeNodeDraftState = getNodeDraftState(activeNode, draft);
 
     return {
@@ -444,64 +412,11 @@ export class OnboardingService {
       control: buildOnboardingControl({
         activeNode,
         activeNodeDraftState,
-        currentQuestion,
       }),
-      currentQuestion,
       draft,
       finishedAt: state.finishedAt,
       topicId: state.activeTopicId,
       version: state.version,
-    };
-  };
-
-  askQuestion = async (params: {
-    node: UserAgentOnboardingNode;
-    question: UserAgentOnboardingQuestionDraft;
-  }): Promise<AskQuestionResult> => {
-    const context = await this.getState();
-    const activeNode = context.activeNode;
-
-    if (!activeNode) {
-      return {
-        content: 'Onboarding is already complete.',
-        currentQuestion: context.currentQuestion,
-        success: false,
-      };
-    }
-
-    if (params.node !== activeNode) {
-      return {
-        activeNode,
-        content: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}".`,
-        control: context.control,
-        currentQuestion: context.currentQuestion,
-        mismatch: true,
-        requestedNode: params.node,
-        success: false,
-      };
-    }
-
-    const persistedState = await this.ensurePersistedState();
-    const currentQuestion = attachNodeToQuestion(params.node, params.question);
-
-    await this.saveState({
-      ...persistedState,
-      questionSurface: {
-        node: params.node,
-        question: currentQuestion,
-        updatedAt: new Date().toISOString(),
-      },
-    });
-
-    const nextContext = await this.getState();
-
-    return {
-      activeNode: nextContext.activeNode,
-      content: `Saved the current question for "${params.node}". Use it as the active question before replying to the user.`,
-      control: nextContext.control,
-      currentQuestion: nextContext.currentQuestion,
-      storedQuestionId: currentQuestion.id,
-      success: true,
     };
   };
 
@@ -531,7 +446,6 @@ export class OnboardingService {
           activeNodeDraftState: nextContext.activeNodeDraftState,
           content: contentParts.join('\n'),
           control: nextContext.control,
-          currentQuestion: nextContext.currentQuestion,
           draft: nextContext.draft,
           processedNodes,
         };
@@ -548,7 +462,6 @@ export class OnboardingService {
           activeNodeDraftState: nextContext.activeNodeDraftState,
           content: contentParts.join('\n'),
           control: nextContext.control,
-          currentQuestion: nextContext.currentQuestion,
           draft: nextContext.draft,
           processedNodes,
         };
@@ -568,7 +481,6 @@ export class OnboardingService {
       activeNodeDraftState: nextContext.activeNodeDraftState,
       content: contentParts.join('\n'),
       control: nextContext.control,
-      currentQuestion: nextContext.currentQuestion,
       draft: nextContext.draft,
       processedNodes,
     };
@@ -681,7 +593,6 @@ export class OnboardingService {
         committedValue: handler.getDraftValue(draft),
         content: commitResult.content,
         control: commitResult.control,
-        currentQuestion: commitResult.currentQuestion,
         draft: {},
         nextAction: 'ask',
         success: commitResult.success,
@@ -717,11 +628,7 @@ export class OnboardingService {
     if (activeNode === 'summary') {
       return {
         content: 'Use finishOnboarding from the summary step.',
-        control: buildOnboardingControl({
-          activeNode,
-          currentQuestion:
-            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
-        }),
+        control: buildOnboardingControl({ activeNode }),
         success: false,
       };
     }
@@ -744,8 +651,6 @@ export class OnboardingService {
         control: buildOnboardingControl({
           activeNode,
           activeNodeDraftState: getNodeDraftState(activeNode, draft),
-          currentQuestion:
-            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
         }),
         success: false,
       };
@@ -792,7 +697,6 @@ export class OnboardingService {
         ? `Committed step "${activeNode}". Continue with "${nextNode}".`
         : `Committed step "${activeNode}".`,
       control: nextContext.control,
-      currentQuestion: nextContext.currentQuestion,
       success: true,
     };
   };
@@ -807,7 +711,6 @@ export class OnboardingService {
         control: buildOnboardingControl({
           activeNode,
           activeNodeDraftState: undefined,
-          currentQuestion: undefined,
         }),
         success: false,
       };
@@ -821,8 +724,6 @@ export class OnboardingService {
         control: buildOnboardingControl({
           activeNode,
           activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
-          currentQuestion:
-            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
         }),
         success: false,
       };
@@ -838,8 +739,6 @@ export class OnboardingService {
         control: buildOnboardingControl({
           activeNode,
           activeNodeDraftState: draftState,
-          currentQuestion:
-            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
         }),
         success: false,
       };
@@ -852,9 +751,6 @@ export class OnboardingService {
     const state = await this.ensurePersistedState();
     const activeNode = getActiveNode(state);
     const draft = state.draft ?? {};
-    const questionSurface = state.questionSurface;
-    const currentQuestion =
-      questionSurface && questionSurface.node === activeNode ? questionSurface.question : undefined;
 
     return {
       activeNode,
@@ -864,9 +760,7 @@ export class OnboardingService {
       control: buildOnboardingControl({
         activeNode,
         activeNodeDraftState: getNodeDraftState(activeNode, draft),
-        currentQuestion,
       }),
-      currentQuestion,
       success: true,
     };
   };
@@ -897,17 +791,11 @@ export class OnboardingService {
     const activeNode = getActiveNode(state);
 
     if (activeNode !== 'summary') {
-      const questionSurface = state.questionSurface;
-
       return {
         content: `Active onboarding step is "${activeNode ?? 'completed'}". Finish is only allowed in "summary".`,
         control: buildOnboardingControl({
           activeNode,
           activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
-          currentQuestion:
-            questionSurface && questionSurface.node === activeNode
-              ? questionSurface.question
-              : undefined,
         }),
         success: false,
       };

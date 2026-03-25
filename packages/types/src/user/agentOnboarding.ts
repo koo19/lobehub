@@ -111,12 +111,6 @@ export interface UserAgentOnboardingQuestion extends UserAgentOnboardingQuestion
   node: UserAgentOnboardingNode;
 }
 
-export interface UserAgentOnboardingQuestionSurface {
-  node: UserAgentOnboardingNode;
-  question: UserAgentOnboardingQuestion;
-  updatedAt: string;
-}
-
 export interface UserAgentOnboardingControl {
   allowedTools: string[];
   canCompleteCurrentStep: boolean;
@@ -133,7 +127,6 @@ export interface UserAgentOnboardingContext {
   committed: Record<string, unknown>;
   completedNodes: UserAgentOnboardingNode[];
   control: UserAgentOnboardingControl;
-  currentQuestion?: UserAgentOnboardingQuestion;
   draft: UserAgentOnboardingDraft;
   finishedAt?: string;
   topicId?: string;
@@ -156,7 +149,6 @@ export interface UserAgentOnboarding {
   draft?: UserAgentOnboardingDraft;
   finishedAt?: string;
   profile?: UserOnboardingProfile;
-  questionSurface?: UserAgentOnboardingQuestionSurface;
   version: number;
 }
 
@@ -261,12 +253,6 @@ export const UserAgentOnboardingDraftSchema = z.object({
   workStyle: UserOnboardingDimensionWorkStyleSchema.partial().optional(),
 });
 
-const UserAgentOnboardingQuestionSurfaceSchema = z.object({
-  node: UserAgentOnboardingNodeSchema,
-  question: UserAgentOnboardingQuestionSchema,
-  updatedAt: z.string(),
-});
-
 export const UserAgentOnboardingSchema = z.object({
   activeTopicId: z.string().optional(),
   agentIdentity: UserOnboardingAgentIdentitySchema.optional(),
@@ -283,6 +269,5 @@ export const UserAgentOnboardingSchema = z.object({
       workStyle: UserOnboardingDimensionWorkStyleSchema.optional(),
     })
     .optional(),
-  questionSurface: UserAgentOnboardingQuestionSurfaceSchema.optional(),
   version: z.number(),
 });

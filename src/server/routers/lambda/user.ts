@@ -7,7 +7,6 @@ import {
 import {
   Plans,
   UserAgentOnboardingNodeSchema,
-  UserAgentOnboardingQuestionDraftSchema,
   UserAgentOnboardingSchema,
   UserAgentOnboardingUpdateSchema,
   UserGuideSchema,
@@ -217,19 +216,6 @@ export const userRouter = router({
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
       return onboardingService.saveAnswer(input);
-    }),
-
-  askOnboardingQuestion: userProcedure
-    .input(
-      z.object({
-        node: UserAgentOnboardingNodeSchema,
-        question: UserAgentOnboardingQuestionDraftSchema,
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
-
-      return onboardingService.askQuestion(input);
     }),
 
   completeOnboardingStep: userProcedure

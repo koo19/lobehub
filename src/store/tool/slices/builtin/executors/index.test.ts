@@ -12,7 +12,6 @@ describe('builtin executor registry', () => {
       true,
     );
     expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.saveAnswer)).toBe(true);
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.askUserQuestion)).toBe(true);
     expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.completeCurrentStep)).toBe(
       true,
     );
