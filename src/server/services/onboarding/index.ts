@@ -24,8 +24,7 @@ import { AgentService } from '@/server/services/agent';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { translation } from '@/server/translation';
 
-import { buildIdentityDocument, buildSoulDocument } from './documentHelpers';
-import { NODE_HANDLERS, PROFILE_DOCUMENT_NODES } from './nodeHandlers';
+import { NODE_HANDLERS } from './nodeHandlers';
 import { getNodeDraftState } from './nodeSchema';
 
 type OnboardingPatchInput = Record<string, unknown>;
@@ -204,35 +203,6 @@ export class OnboardingService {
     );
 
     this.inboxDocumentsInitialized = true;
-  };
-
-  private upsertInboxDocuments = async (
-    state: UserAgentOnboarding,
-    writeIdentity: boolean,
-  ): Promise<void> => {
-    const inboxAgentId = await this.getInboxAgentId();
-
-    await this.ensureInboxDocuments(inboxAgentId);
-
-    const upserts = [
-      this.agentDocumentsService.upsertDocument({
-        agentId: inboxAgentId,
-        content: buildSoulDocument(state),
-        filename: 'SOUL.md',
-      }),
-    ];
-
-    if (writeIdentity && state.agentIdentity) {
-      upserts.push(
-        this.agentDocumentsService.upsertDocument({
-          agentId: inboxAgentId,
-          content: buildIdentityDocument(state.agentIdentity),
-          filename: 'IDENTITY.md',
-        }),
-      );
-    }
-
-    await Promise.all(upserts);
   };
 
   private transferToInbox = async (topicId: string): Promise<void> => {
@@ -681,14 +651,6 @@ export class OnboardingService {
       completedNodes,
       draft: nextDraft,
     });
-
-    if (PROFILE_DOCUMENT_NODES.has(activeNode)) {
-      try {
-        await this.upsertInboxDocuments(state, activeNode === 'agentIdentity');
-      } catch (error) {
-        console.error('[OnboardingService] Failed to upsert inbox documents:', error);
-      }
-    }
 
     const nextContext = await this.getState();
 

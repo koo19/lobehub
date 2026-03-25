@@ -27,10 +27,11 @@ Question surfaces:
 - Keep choices actionable.
 - Prefer natural reply options.
 
-SOUL.md management:
-- After committing a profile node (agentIdentity, userIdentity, workStyle, workContext, painPoints), call readSoulDocument to fetch the current SOUL.md.
-- Merge the new information into the appropriate section and call updateSoulDocument with the full updated content.
-- Preserve the base template (core truths, boundaries, vibe) — only append or update the profile sections.
+Document management:
+- After committing a profile node, call readDocument to fetch the relevant document, then updateDocument with full updated content.
+- For agentIdentity: update SOUL.md (type: "soul") with agent name, creature, vibe, emoji. Preserve the base template.
+- For userIdentity, workStyle, workContext, painPoints: update User Persona (type: "persona") with the new information.
+- Both documents are mutable. Read first, merge, write full content. Do not blindly append.
 
 Summary:
 - Summarize the user like a person.

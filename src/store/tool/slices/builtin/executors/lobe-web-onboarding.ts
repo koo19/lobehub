@@ -73,33 +73,29 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     return createWebOnboardingToolResult(result);
   };
 
-  readSoulDocument = async (): Promise<BuiltinToolResult> => {
-    const result = await userService.readSoulDocument();
-
-    if (!result.content) {
-      return { content: 'SOUL.md not found.', success: false };
-    }
+  readDocument = async (params: { type: 'soul' | 'persona' }): Promise<BuiltinToolResult> => {
+    const result = await userService.readOnboardingDocument(params.type);
 
     return {
-      content: result.content,
-      state: { content: result.content, filename: 'SOUL.md', id: result.id },
+      content: result.content || '',
+      state: { content: result.content, id: result.id, type: params.type },
       success: true,
     };
   };
 
-  updateSoulDocument = async (
-    params: { content: string },
+  updateDocument = async (
+    params: { content: string; type: 'soul' | 'persona' },
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.updateSoulDocument(params.content);
+    const result = await userService.updateOnboardingDocument(params.type, params.content);
 
     if (!result.id) {
-      return { content: 'Failed to update SOUL.md.', success: false };
+      return { content: `Failed to update ${params.type} document.`, success: false };
     }
 
     return {
-      content: `Updated SOUL.md (${result.id}).`,
-      state: { filename: 'SOUL.md', id: result.id },
+      content: `Updated ${params.type} document (${result.id}).`,
+      state: { id: result.id, type: params.type },
       success: true,
     };
   };

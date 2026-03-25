@@ -250,28 +250,50 @@ export const userRouter = router({
     return onboardingService.finishOnboarding();
   }),
 
-  readSoulDocument: userProcedure.query(async ({ ctx }) => {
-    const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
-    const docService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
-    const inboxAgentId = await onboardingService.getInboxAgentId();
-    const doc = await docService.getDocumentByFilename(inboxAgentId, 'SOUL.md');
+  readOnboardingDocument: userProcedure
+    .input(z.object({ type: z.enum(['soul', 'persona']) }))
+    .query(async ({ ctx, input }) => {
+      if (input.type === 'soul') {
+        const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+        const docService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
+        const inboxAgentId = await onboardingService.getInboxAgentId();
+        const doc = await docService.getDocumentByFilename(inboxAgentId, 'SOUL.md');
 
-    return { content: doc?.content || '', id: doc?.id };
-  }),
+        return { content: doc?.content || '', id: doc?.id, type: 'soul' as const };
+      }
 
-  updateSoulDocument: userProcedure
-    .input(z.object({ content: z.string() }))
+      const { UserPersonaModel } = await import('@/database/models/userMemory/persona');
+      const personaModel = new UserPersonaModel(ctx.serverDB, ctx.userId);
+      const persona = await personaModel.getLatestPersonaDocument();
+
+      return { content: persona?.persona || '', id: persona?.id, type: 'persona' as const };
+    }),
+
+  updateOnboardingDocument: userProcedure
+    .input(z.object({ content: z.string(), type: z.enum(['soul', 'persona']) }))
     .mutation(async ({ ctx, input }) => {
-      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
-      const docService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
-      const inboxAgentId = await onboardingService.getInboxAgentId();
-      const doc = await docService.upsertDocumentByFilename({
-        agentId: inboxAgentId,
-        content: input.content,
-        filename: 'SOUL.md',
+      if (input.type === 'soul') {
+        const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+        const docService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
+        const inboxAgentId = await onboardingService.getInboxAgentId();
+        const doc = await docService.upsertDocumentByFilename({
+          agentId: inboxAgentId,
+          content: input.content,
+          filename: 'SOUL.md',
+        });
+
+        return { id: doc?.id, type: 'soul' as const };
+      }
+
+      const { UserPersonaModel } = await import('@/database/models/userMemory/persona');
+      const personaModel = new UserPersonaModel(ctx.serverDB, ctx.userId);
+      const result = await personaModel.upsertPersona({
+        editedBy: 'agent_tool',
+        persona: input.content,
+        profile: 'default',
       });
 
-      return { id: doc?.id };
+      return { id: result.document.id, type: 'persona' as const };
     }),
 
   resetAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {

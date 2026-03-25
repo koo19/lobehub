@@ -3,6 +3,7 @@ import {
   WebOnboardingManifest,
 } from '@lobechat/builtin-tool-web-onboarding';
 
+import { UserPersonaModel } from '@/database/models/userMemory/persona';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { OnboardingService } from '@/server/services/onboarding';
 import { createWebOnboardingToolResult } from '@/utils/webOnboardingToolResult';
@@ -17,6 +18,7 @@ export const webOnboardingRuntime: ServerRuntimeRegistration = {
 
     const service = new OnboardingService(context.serverDB, context.userId);
     const docService = new AgentDocumentsService(context.serverDB, context.userId);
+    const personaModel = new UserPersonaModel(context.serverDB, context.userId);
     const proxy: Record<string, (args: Record<string, unknown>) => Promise<any>> = {};
 
     for (const api of WebOnboardingManifest.api) {
@@ -47,35 +49,60 @@ export const webOnboardingRuntime: ServerRuntimeRegistration = {
 
             return createWebOnboardingToolResult(result);
           }
-          case 'readSoulDocument': {
-            const inboxAgentId = await service.getInboxAgentId();
-            const doc = await docService.getDocumentByFilename(inboxAgentId, 'SOUL.md');
+          case 'readDocument': {
+            const docType = args.type as 'soul' | 'persona';
 
-            if (!doc) {
-              return { content: 'SOUL.md not found.', success: false };
+            if (docType === 'soul') {
+              const inboxAgentId = await service.getInboxAgentId();
+              const doc = await docService.getDocumentByFilename(inboxAgentId, 'SOUL.md');
+
+              if (!doc) return { content: 'SOUL.md not found.', success: false };
+
+              return {
+                content: doc.content || '',
+                state: { content: doc.content, id: doc.id, type: 'soul' },
+                success: true,
+              };
             }
 
+            const persona = await personaModel.getLatestPersonaDocument();
+
             return {
-              content: doc.content || '',
-              state: { content: doc.content, filename: 'SOUL.md', id: doc.id },
+              content: persona?.persona || '',
+              state: { content: persona?.persona, id: persona?.id, type: 'persona' },
               success: true,
             };
           }
-          case 'updateSoulDocument': {
-            const inboxAgentId = await service.getInboxAgentId();
-            const doc = await docService.upsertDocumentByFilename({
-              agentId: inboxAgentId,
-              content: args.content as string,
-              filename: 'SOUL.md',
-            });
+          case 'updateDocument': {
+            const updateType = args.type as 'soul' | 'persona';
+            const content = args.content as string;
 
-            if (!doc) {
-              return { content: 'Failed to update SOUL.md.', success: false };
+            if (updateType === 'soul') {
+              const inboxAgentId = await service.getInboxAgentId();
+              const doc = await docService.upsertDocumentByFilename({
+                agentId: inboxAgentId,
+                content,
+                filename: 'SOUL.md',
+              });
+
+              if (!doc) return { content: 'Failed to update SOUL.md.', success: false };
+
+              return {
+                content: `Updated SOUL.md (${doc.id}).`,
+                state: { id: doc.id, type: 'soul' },
+                success: true,
+              };
             }
 
+            const result = await personaModel.upsertPersona({
+              editedBy: 'agent_tool',
+              persona: content,
+              profile: 'default',
+            });
+
             return {
-              content: `Updated SOUL.md (${doc.id}).`,
-              state: { filename: 'SOUL.md', id: doc.id },
+              content: `Updated user persona (${result.document.id}).`,
+              state: { id: result.document.id, type: 'persona' },
               success: true,
             };
           }

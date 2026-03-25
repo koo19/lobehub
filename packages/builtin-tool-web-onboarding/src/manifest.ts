@@ -96,25 +96,37 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Read the current SOUL.md document from the inbox agent. Use this to understand the existing soul profile before making updates.',
-      name: WebOnboardingApiName.readSoulDocument,
+        'Read a document by type. Use "soul" to read SOUL.md (agent identity + base template), or "persona" to read the user persona document (user identity, work style, context, pain points).',
+      name: WebOnboardingApiName.readDocument,
       parameters: {
-        properties: {},
+        properties: {
+          type: {
+            description: 'Document type to read.',
+            enum: ['soul', 'persona'],
+            type: 'string',
+          },
+        },
+        required: ['type'],
         type: 'object',
       },
     },
     {
       description:
-        'Update the SOUL.md document on the inbox agent with new content. The content should be the full updated SOUL.md markdown.',
-      name: WebOnboardingApiName.updateSoulDocument,
+        'Update a document by type with full content. Use "soul" for SOUL.md (agent identity + base template only, no user info), or "persona" for user persona (user identity, work style, context, pain points only, no agent info).',
+      name: WebOnboardingApiName.updateDocument,
       parameters: {
         properties: {
           content: {
-            description: 'The full updated SOUL.md content in markdown format.',
+            description: 'The full updated document content in markdown format.',
+            type: 'string',
+          },
+          type: {
+            description: 'Document type to update.',
+            enum: ['soul', 'persona'],
             type: 'string',
           },
         },
-        required: ['content'],
+        required: ['type', 'content'],
         type: 'object',
       },
     },

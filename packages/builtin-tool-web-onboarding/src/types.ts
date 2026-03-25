@@ -4,8 +4,8 @@ export const WebOnboardingApiName = {
   completeCurrentStep: 'completeCurrentStep',
   finishOnboarding: 'finishOnboarding',
   getOnboardingState: 'getOnboardingState',
-  readSoulDocument: 'readSoulDocument',
+  readDocument: 'readDocument',
   returnToOnboarding: 'returnToOnboarding',
   saveAnswer: 'saveAnswer',
-  updateSoulDocument: 'updateSoulDocument',
+  updateDocument: 'updateDocument',
 } as const;
