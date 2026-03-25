@@ -290,31 +290,26 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
   }
 
   /**
-   * Download CDN media items and return attachments with data URLs.
-   * Per protocol-spec §8.3: GET CDN /download → AES-128-ECB decrypt.
+   * Download media items and return attachments with data URLs.
+   *
+   * Strategy per item type:
+   *   1. If CDN media is available, download + AES decrypt (protocol-spec §8.3).
+   *   2. For images: fall back to `image_item.url` if CDN is unavailable or fails.
    */
   private async downloadMediaAttachments(msg: WechatRawMessage): Promise<Attachment[]> {
     const attachments: Attachment[] = [];
 
     for (const item of msg.item_list) {
-      if (!hasCdnMedia(item)) continue;
-
       try {
         switch (item.type) {
           case MessageItemType.IMAGE: {
-            const media = item.image_item!.media;
-            const buffer = await this.api.downloadCdnMedia(media, item.image_item!.aeskey);
-            attachments.push({
-              mimeType: 'image/jpeg',
-              name: 'image.jpg',
-              type: 'image',
-              url: `data:image/jpeg;base64,${buffer.toString('base64')}`,
-            });
+            const attachment = await this.downloadImageItem(item);
+            if (attachment) attachments.push(attachment);
             break;
           }
           case MessageItemType.VOICE: {
-            const media = item.voice_item!.media;
-            const buffer = await this.api.downloadCdnMedia(media);
+            if (!hasCdnMedia(item) || !item.voice_item?.media) break;
+            const buffer = await this.api.downloadCdnMedia(item.voice_item.media);
             attachments.push({
               mimeType: 'audio/silk',
               type: 'audio',
@@ -323,8 +318,8 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
             break;
           }
           case MessageItemType.FILE: {
-            const media = item.file_item!.media;
-            const buffer = await this.api.downloadCdnMedia(media);
+            if (!hasCdnMedia(item) || !item.file_item?.media) break;
+            const buffer = await this.api.downloadCdnMedia(item.file_item.media);
             attachments.push({
               mimeType: 'application/octet-stream',
               name: item.file_item?.file_name,
@@ -335,8 +330,8 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
             break;
           }
           case MessageItemType.VIDEO: {
-            const media = item.video_item!.media;
-            const buffer = await this.api.downloadCdnMedia(media);
+            if (!hasCdnMedia(item) || !item.video_item?.media) break;
+            const buffer = await this.api.downloadCdnMedia(item.video_item.media);
             attachments.push({
               mimeType: 'video/mp4',
               size: parseOptionalNumber(item.video_item?.video_size),
@@ -356,6 +351,74 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
     }
 
     return attachments;
+  }
+
+  /**
+   * Download an image item with cascading fallback:
+   *   1. CDN main media (image_item.media)
+   *   2. CDN thumbnail (image_item.thumb_media)
+   *   3. Direct URL (image_item.url)
+   */
+  private async downloadImageItem(
+    item: WechatRawMessage['item_list'][number],
+  ): Promise<Attachment | undefined> {
+    const imageItem = item.image_item;
+    if (!imageItem) return undefined;
+
+    // 1. Try CDN download from main media
+    if (imageItem.media?.encrypt_query_param) {
+      try {
+        const buffer = await this.api.downloadCdnMedia(imageItem.media, imageItem.aeskey);
+        return {
+          mimeType: 'image/jpeg',
+          name: 'image.jpg',
+          type: 'image',
+          url: `data:image/jpeg;base64,${buffer.toString('base64')}`,
+        };
+      } catch (error) {
+        this.logger.warn('CDN image download failed: %s', error);
+      }
+    }
+
+    // 2. Try CDN thumbnail as fallback
+    if (imageItem.thumb_media?.encrypt_query_param) {
+      try {
+        const buffer = await this.api.downloadCdnMedia(imageItem.thumb_media, imageItem.aeskey);
+        return {
+          mimeType: 'image/jpeg',
+          name: 'image.jpg',
+          type: 'image',
+          url: `data:image/jpeg;base64,${buffer.toString('base64')}`,
+        };
+      } catch (error) {
+        this.logger.warn('CDN thumbnail download failed: %s', error);
+      }
+    }
+
+    // 3. Fall back to direct url field
+    if (imageItem.url) {
+      try {
+        const response = await fetch(imageItem.url, {
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (response.ok) {
+          const buffer = Buffer.from(await response.arrayBuffer());
+          const contentType = response.headers.get('content-type') || 'image/jpeg';
+          return {
+            mimeType: contentType,
+            name: 'image.jpg',
+            type: 'image',
+            url: `data:${contentType};base64,${buffer.toString('base64')}`,
+          };
+        }
+        this.logger.warn('Image url fallback failed: HTTP %d', response.status);
+      } catch (error) {
+        this.logger.warn('Image url fallback failed: %s', error);
+      }
+    }
+
+    this.logger.warn('No image source available (no CDN media, no thumb, no url)');
+    return undefined;
   }
 
   // ------------------------------------------------------------------
