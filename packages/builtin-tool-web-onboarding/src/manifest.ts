@@ -94,6 +94,30 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
         type: 'object',
       },
     },
+    {
+      description:
+        'Read the current SOUL.md document from the inbox agent. Use this to understand the existing soul profile before making updates.',
+      name: WebOnboardingApiName.readSoulDocument,
+      parameters: {
+        properties: {},
+        type: 'object',
+      },
+    },
+    {
+      description:
+        'Update the SOUL.md document on the inbox agent with new content. The content should be the full updated SOUL.md markdown.',
+      name: WebOnboardingApiName.updateSoulDocument,
+      parameters: {
+        properties: {
+          content: {
+            description: 'The full updated SOUL.md content in markdown format.',
+            type: 'string',
+          },
+        },
+        required: ['content'],
+        type: 'object',
+      },
+    },
   ],
   identifier: WebOnboardingIdentifier,
   meta: {

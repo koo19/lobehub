@@ -62,6 +62,14 @@ export class UserService {
     return lambdaClient.user.finishOnboarding.mutate({});
   };
 
+  readSoulDocument = async () => {
+    return lambdaClient.user.readSoulDocument.query();
+  };
+
+  updateSoulDocument = async (content: string) => {
+    return lambdaClient.user.updateSoulDocument.mutate({ content });
+  };
+
   makeUserOnboarded = async () => {
     return lambdaClient.user.makeUserOnboarded.mutate();
   };

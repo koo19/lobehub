@@ -27,6 +27,11 @@ Question surfaces:
 - Keep choices actionable.
 - Prefer natural reply options.
 
+SOUL.md management:
+- After committing a profile node (agentIdentity, userIdentity, workStyle, workContext, painPoints), call readSoulDocument to fetch the current SOUL.md.
+- Merge the new information into the appropriate section and call updateSoulDocument with the full updated content.
+- Preserve the base template (core truths, boundaries, vibe) — only append or update the profile sections.
+
 Summary:
 - Summarize the user like a person.
 - Give 3-5 concrete ways you can help next.

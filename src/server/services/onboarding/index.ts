@@ -24,7 +24,7 @@ import { AgentService } from '@/server/services/agent';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { translation } from '@/server/translation';
 
-import { buildSoulDocument } from './documentHelpers';
+import { buildIdentityDocument, buildSoulDocument } from './documentHelpers';
 import { NODE_HANDLERS, PROFILE_DOCUMENT_NODES } from './nodeHandlers';
 import { getNodeDraftState } from './nodeSchema';
 
@@ -158,7 +158,7 @@ export class OnboardingService {
     this.userModel = new UserModel(db, userId);
   }
 
-  private getInboxAgentId = async (): Promise<string> => {
+  getInboxAgentId = async (): Promise<string> => {
     if (this.cachedInboxAgentId) return this.cachedInboxAgentId;
 
     const inboxAgent = await this.agentModel.getBuiltinAgent(BUILTIN_AGENT_SLUGS.inbox);
@@ -208,13 +208,13 @@ export class OnboardingService {
 
   private upsertInboxDocuments = async (
     state: UserAgentOnboarding,
-    syncIdentity: boolean,
+    writeIdentity: boolean,
   ): Promise<void> => {
     const inboxAgentId = await this.getInboxAgentId();
 
     await this.ensureInboxDocuments(inboxAgentId);
 
-    const tasks: Promise<unknown>[] = [
+    const upserts = [
       this.agentDocumentsService.upsertDocument({
         agentId: inboxAgentId,
         content: buildSoulDocument(state),
@@ -222,16 +222,17 @@ export class OnboardingService {
       }),
     ];
 
-    if (syncIdentity && state.agentIdentity) {
-      tasks.push(
-        this.agentModel.update(inboxAgentId, {
-          avatar: state.agentIdentity.emoji,
-          title: state.agentIdentity.name,
+    if (writeIdentity && state.agentIdentity) {
+      upserts.push(
+        this.agentDocumentsService.upsertDocument({
+          agentId: inboxAgentId,
+          content: buildIdentityDocument(state.agentIdentity),
+          filename: 'IDENTITY.md',
         }),
       );
     }
 
-    await Promise.all(tasks);
+    await Promise.all(upserts);
   };
 
   private transferToInbox = async (topicId: string): Promise<void> => {

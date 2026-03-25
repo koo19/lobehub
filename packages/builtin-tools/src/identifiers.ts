@@ -15,6 +15,7 @@ import { SkillStoreManifest } from '@lobechat/builtin-tool-skill-store';
 import { SkillsManifest } from '@lobechat/builtin-tool-skills';
 import { LobeToolsManifest } from '@lobechat/builtin-tool-tools';
 import { TopicReferenceManifest } from '@lobechat/builtin-tool-topic-reference';
+import { UserInteractionManifest } from '@lobechat/builtin-tool-user-interaction';
 import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
 import { WebOnboardingManifest } from '@lobechat/builtin-tool-web-onboarding';
 
@@ -37,5 +38,6 @@ export const builtinToolIdentifiers: string[] = [
   TopicReferenceManifest.identifier,
   LobeToolsManifest.identifier,
   SkillStoreManifest.identifier,
+  UserInteractionManifest.identifier,
   WebOnboardingManifest.identifier,
 ];

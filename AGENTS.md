@@ -47,6 +47,7 @@ lobehub/
 - Git commit messages should prefix with gitmoji
 - Git branch name format: `feat/feature-name`
 - Use `.github/PULL_REQUEST_TEMPLATE.md` for PR descriptions
+- **Protection of local changes**: Never use `git restore`, `git checkout --`, `git reset --hard`, or any other command or workflow that can forcibly overwrite, discard, or silently replace user-owned uncommitted changes. Before any revert or restoration affecting existing files, inspect the working tree carefully and obtain explicit user confirmation.
 
 ### Package Management
 

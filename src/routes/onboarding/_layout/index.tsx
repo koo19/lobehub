@@ -37,7 +37,7 @@ const OnBoardingContainer: FC<PropsWithChildren> = ({ children }) => {
             <ThemeButton placement={'bottomRight'} size={18} />
           </Flexbox>
         </Flexbox>
-        <Center height={'100%'} padding={16} width={'100%'}>
+        <Center height={'100%'} width={'100%'}>
           {children}
         </Center>
       </Flexbox>

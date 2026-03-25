@@ -1,33 +1,42 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildSoulDocument } from './documentHelpers';
+import { buildIdentityDocument, buildSoulDocument } from './documentHelpers';
+
+describe('buildIdentityDocument', () => {
+  it('should render all identity fields', () => {
+    const result = buildIdentityDocument({
+      emoji: '🦊',
+      name: 'Fox',
+      nature: 'digital familiar',
+      vibe: 'warm and curious',
+    });
+
+    expect(result).toContain('**Name:** Fox');
+    expect(result).toContain('**Creature:** digital familiar');
+    expect(result).toContain('**Vibe:** warm and curious');
+    expect(result).toContain('**Emoji:** 🦊');
+  });
+
+  it('should handle missing optional fields gracefully', () => {
+    const result = buildIdentityDocument({
+      emoji: '🤖',
+      name: 'Bot',
+      nature: '',
+      vibe: '',
+    });
+
+    expect(result).toContain('**Name:** Bot');
+    expect(result).toContain('**Emoji:** 🤖');
+  });
+});
 
 describe('buildSoulDocument', () => {
-  it('should return base SOUL content when no profile or identity exists', () => {
+  it('should return base SOUL content when no profile exists', () => {
     const result = buildSoulDocument({ version: 1 });
 
     expect(result).toContain('# SOUL.md - Who You Are');
     expect(result).toContain('## Core Truths');
-    expect(result).not.toContain('## Identity Core');
     expect(result).not.toContain('## About My Human');
-  });
-
-  it('should include Identity Core section from agentIdentity', () => {
-    const result = buildSoulDocument({
-      agentIdentity: {
-        emoji: '🦊',
-        name: 'Fox',
-        nature: 'familiar',
-        vibe: 'warm',
-      },
-      version: 1,
-    });
-
-    expect(result).toContain('## Identity Core');
-    expect(result).toContain('- **Name:** Fox');
-    expect(result).toContain('- **Avatar:** 🦊');
-    expect(result).toContain('- **Creature:** familiar');
-    expect(result).toContain('- **Vibe:** warm');
   });
 
   it('should append identity summary when present', () => {
@@ -44,12 +53,6 @@ describe('buildSoulDocument', () => {
 
   it('should append all profile sections progressively', () => {
     const result = buildSoulDocument({
-      agentIdentity: {
-        emoji: '🦊',
-        name: 'Fox',
-        nature: 'familiar',
-        vibe: 'warm',
-      },
       profile: {
         identity: { summary: 'Engineer' },
         painPoints: { summary: 'Too many meetings' },
@@ -64,7 +67,6 @@ describe('buildSoulDocument', () => {
       version: 1,
     });
 
-    expect(result).toContain('## Identity Core');
     expect(result).toContain('## About My Human');
     expect(result).toContain('## How We Work Together');
     expect(result).toContain('## Current Context');
@@ -85,23 +87,5 @@ describe('buildSoulDocument', () => {
 
     expect(result).not.toContain('## About My Human');
     expect(result).toContain('## How We Work Together');
-  });
-
-  it('should skip Identity Core when agentIdentity has no name', () => {
-    const result = buildSoulDocument({
-      agentIdentity: {
-        emoji: '🤖',
-        name: '',
-        nature: '',
-        vibe: '',
-      },
-      profile: {
-        identity: { summary: 'Engineer' },
-      },
-      version: 1,
-    });
-
-    expect(result).not.toContain('## Identity Core');
-    expect(result).toContain('## About My Human');
   });
 });

@@ -27,6 +27,7 @@ import { authedProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { FileS3 } from '@/server/modules/S3';
+import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { FileService } from '@/server/services/file';
 import { OnboardingService } from '@/server/services/onboarding';
 
@@ -248,6 +249,30 @@ export const userRouter = router({
 
     return onboardingService.finishOnboarding();
   }),
+
+  readSoulDocument: userProcedure.query(async ({ ctx }) => {
+    const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+    const docService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
+    const inboxAgentId = await onboardingService.getInboxAgentId();
+    const doc = await docService.getDocumentByFilename(inboxAgentId, 'SOUL.md');
+
+    return { content: doc?.content || '', id: doc?.id };
+  }),
+
+  updateSoulDocument: userProcedure
+    .input(z.object({ content: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
+      const docService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
+      const inboxAgentId = await onboardingService.getInboxAgentId();
+      const doc = await docService.upsertDocumentByFilename({
+        agentId: inboxAgentId,
+        content: input.content,
+        filename: 'SOUL.md',
+      });
+
+      return { id: doc?.id };
+    }),
 
   resetAgentOnboarding: userProcedure.mutation(async ({ ctx }) => {
     const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);

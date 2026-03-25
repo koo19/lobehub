@@ -72,6 +72,37 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
 
     return createWebOnboardingToolResult(result);
   };
+
+  readSoulDocument = async (): Promise<BuiltinToolResult> => {
+    const result = await userService.readSoulDocument();
+
+    if (!result.content) {
+      return { content: 'SOUL.md not found.', success: false };
+    }
+
+    return {
+      content: result.content,
+      state: { content: result.content, filename: 'SOUL.md', id: result.id },
+      success: true,
+    };
+  };
+
+  updateSoulDocument = async (
+    params: { content: string },
+    _ctx: BuiltinToolContext,
+  ): Promise<BuiltinToolResult> => {
+    const result = await userService.updateSoulDocument(params.content);
+
+    if (!result.id) {
+      return { content: 'Failed to update SOUL.md.', success: false };
+    }
+
+    return {
+      content: `Updated SOUL.md (${result.id}).`,
+      state: { filename: 'SOUL.md', id: result.id },
+      success: true,
+    };
+  };
 }
 
 export const webOnboardingExecutor = new WebOnboardingExecutor();

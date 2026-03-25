@@ -10,8 +10,9 @@ import type { AskUserQuestionArgs, InteractionField } from '../../../types';
 const FieldInput = memo<{
   field: InteractionField;
   onChange: (key: string, value: string | string[]) => void;
+  onPressEnter?: () => void;
   value?: string | string[];
-}>(({ field, value, onChange }) => {
+}>(({ field, value, onChange, onPressEnter }) => {
   switch (field.kind) {
     case 'textarea': {
       return (
@@ -52,6 +53,7 @@ const FieldInput = memo<{
           placeholder={field.placeholder}
           value={value as string}
           onChange={(e) => onChange(field.key, e.target.value)}
+          onPressEnter={onPressEnter}
         />
       );
     }
@@ -92,7 +94,12 @@ const AskUserQuestionIntervention = memo<BuiltinInterventionProps<AskUserQuestio
       await onInteractionAction({ type: 'skip' });
     }, [onInteractionAction]);
 
-    const isSubmitDisabled = question.fields?.some((f) => f.required && !formData[f.key]) ?? false;
+    const isFreeform =
+      question.mode === 'freeform' && (!question.fields || question.fields.length === 0);
+
+    const isSubmitDisabled = isFreeform
+      ? !formData['__freeform__']
+      : (question.fields?.some((f) => f.required && !formData[f.key]) ?? false);
 
     if (!isCustom) {
       return (
@@ -120,22 +127,35 @@ const AskUserQuestionIntervention = memo<BuiltinInterventionProps<AskUserQuestio
             {question.description}
           </Text>
         )}
-        {question.fields && question.fields.length > 0 && (
-          <Flexbox gap={8}>
-            {question.fields.map((field) => (
-              <Flexbox gap={4} key={field.key}>
-                <Text style={{ fontSize: 13 }}>
-                  {field.label}
-                  {field.required && <span style={{ color: 'red' }}> *</span>}
-                </Text>
-                <FieldInput
-                  field={field}
-                  value={formData[field.key]}
-                  onChange={handleFieldChange}
-                />
-              </Flexbox>
-            ))}
-          </Flexbox>
+        {isFreeform ? (
+          <Input.TextArea
+            autoSize={{ maxRows: 6, minRows: 2 }}
+            placeholder={question.description || ''}
+            value={formData['__freeform__'] as string}
+            onChange={(e) => handleFieldChange('__freeform__', e.target.value)}
+          />
+        ) : (
+          question.fields &&
+          question.fields.length > 0 && (
+            <Flexbox gap={8}>
+              {question.fields.map((field) => (
+                <Flexbox gap={4} key={field.key}>
+                  <Text style={{ fontSize: 13 }}>
+                    {field.label}
+                    {field.required && <span style={{ color: 'red' }}> *</span>}
+                  </Text>
+                  <FieldInput
+                    field={field}
+                    value={formData[field.key]}
+                    onChange={handleFieldChange}
+                    onPressEnter={() => {
+                      if (!isSubmitDisabled) handleSubmit();
+                    }}
+                  />
+                </Flexbox>
+              ))}
+            </Flexbox>
+          )
         )}
         <Flexbox horizontal gap={8} justify="flex-end">
           <Button onClick={handleSkip}>Skip</Button>
