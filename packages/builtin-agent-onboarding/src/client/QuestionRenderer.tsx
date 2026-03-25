@@ -1,7 +1,6 @@
 'use client';
 
 import type {
-  UserAgentOnboardingNode,
   UserAgentOnboardingQuestion,
   UserAgentOnboardingQuestionChoice,
   UserAgentOnboardingQuestionField,
@@ -40,7 +39,6 @@ export interface QuestionRendererProps {
   onBeforeInfoContinue?: (question: UserAgentOnboardingQuestion) => Promise<void> | void;
   onChangeDefaultModel?: (model: string, provider: string) => void;
   onChangeResponseLanguage?: (value: string) => void;
-  onDismissNode?: (node: UserAgentOnboardingNode) => void;
   onSendMessage: (message: string) => Promise<void>;
   renderEmojiPicker?: (props: QuestionRendererRenderEmojiPickerProps) => ReactNode;
   renderKlavisList?: () => ReactNode;
@@ -221,12 +219,11 @@ QuestionChoices.displayName = 'QuestionChoices';
 
 const QuestionForm = memo<{
   loading: boolean;
-  onDismissNode?: (node: UserAgentOnboardingNode) => void;
   onSendMessage: (message: string) => Promise<void>;
   question: UserAgentOnboardingQuestion;
   renderEmojiPicker?: (props: QuestionRendererRenderEmojiPickerProps) => ReactNode;
   submitLabel: ReactNode;
-}>(({ loading, onDismissNode, onSendMessage, question, renderEmojiPicker, submitLabel }) => {
+}>(({ loading, onSendMessage, question, renderEmojiPicker, submitLabel }) => {
   const initialValues = useMemo(
     () =>
       Object.fromEntries(
@@ -249,8 +246,6 @@ const QuestionForm = memo<{
     if (!message) return;
 
     await onSendMessage(message);
-
-    onDismissNode?.(question.node);
   };
 
   return (
@@ -282,7 +277,6 @@ const QuestionSelect = memo<{
   loading: boolean;
   nextLabel: ReactNode;
   onChangeResponseLanguage?: (value: string) => void;
-  onDismissNode?: (node: UserAgentOnboardingNode) => void;
   onSendMessage: (message: string) => Promise<void>;
   options?: Array<{ label: string; value: string }>;
   question: UserAgentOnboardingQuestion;
@@ -292,21 +286,22 @@ const QuestionSelect = memo<{
     loading,
     nextLabel,
     onChangeResponseLanguage,
-    onDismissNode,
     onSendMessage,
     options,
     question,
   }) => {
+    const isLanguageNode = question.node === 'responseLanguage';
     const field = question.fields?.[0];
     const initialValue =
-      (typeof field?.value === 'string' && field.value) || currentResponseLanguage;
+      (typeof field?.value === 'string' && field.value) ||
+      (isLanguageNode ? currentResponseLanguage : undefined);
     const [value, setValue] = useState(initialValue);
 
     useEffect(() => {
       setValue(initialValue);
     }, [initialValue]);
 
-    const resolvedOptions = field?.options || options || [];
+    const resolvedOptions = field?.options || (isLanguageNode ? options : undefined) || [];
 
     const handleSubmit = async () => {
       const message = buildQuestionAnswerMessage(
@@ -317,7 +312,6 @@ const QuestionSelect = memo<{
       if (!message) return;
 
       await onSendMessage(message);
-      onDismissNode?.(question.node);
     };
 
     return (
@@ -329,7 +323,7 @@ const QuestionSelect = memo<{
           style={{ width: '100%' }}
           value={value}
           onChange={(nextValue) => {
-            onChangeResponseLanguage?.(nextValue);
+            if (isLanguageNode) onChangeResponseLanguage?.(nextValue);
             setValue(nextValue);
           }}
         />
@@ -352,7 +346,6 @@ const QuestionInfo = memo<{
   nextLabel: ReactNode;
   onBeforeInfoContinue?: (question: UserAgentOnboardingQuestion) => Promise<void> | void;
   onChangeDefaultModel?: (model: string, provider: string) => void;
-  onDismissNode?: (node: UserAgentOnboardingNode) => void;
   onSendMessage: (message: string) => Promise<void>;
   question: UserAgentOnboardingQuestion;
   renderKlavisList?: () => ReactNode;
@@ -367,7 +360,6 @@ const QuestionInfo = memo<{
     nextLabel,
     onBeforeInfoContinue,
     onChangeDefaultModel,
-    onDismissNode,
     onSendMessage,
     question,
     renderKlavisList,
@@ -390,7 +382,6 @@ const QuestionInfo = memo<{
           : 'I am done with advanced setup.';
 
       await onSendMessage(message);
-      onDismissNode?.(question.node);
     };
 
     return (
@@ -438,7 +429,6 @@ const QuestionRenderer = memo<QuestionRendererProps>(
     onBeforeInfoContinue,
     onChangeDefaultModel,
     onChangeResponseLanguage,
-    onDismissNode,
     onSendMessage,
     renderEmojiPicker,
     renderKlavisList,
@@ -452,7 +442,6 @@ const QuestionRenderer = memo<QuestionRendererProps>(
       if (!message) return;
 
       await onSendMessage(message);
-      onDismissNode?.(currentQuestion.node);
     };
 
     return (
@@ -466,7 +455,6 @@ const QuestionRenderer = memo<QuestionRendererProps>(
             question={currentQuestion}
             renderEmojiPicker={renderEmojiPicker}
             submitLabel={submitLabel}
-            onDismissNode={onDismissNode}
             onSendMessage={onSendMessage}
           />
         )}
@@ -478,7 +466,6 @@ const QuestionRenderer = memo<QuestionRendererProps>(
             options={responseLanguageOptions}
             question={currentQuestion}
             onChangeResponseLanguage={onChangeResponseLanguage}
-            onDismissNode={onDismissNode}
             onSendMessage={onSendMessage}
           />
         )}
@@ -495,7 +482,6 @@ const QuestionRenderer = memo<QuestionRendererProps>(
             renderModelSelect={renderModelSelect}
             onBeforeInfoContinue={onBeforeInfoContinue}
             onChangeDefaultModel={onChangeDefaultModel}
-            onDismissNode={onDismissNode}
             onSendMessage={onSendMessage}
           />
         )}

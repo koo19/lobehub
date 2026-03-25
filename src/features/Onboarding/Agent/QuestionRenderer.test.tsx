@@ -20,8 +20,6 @@ describe('QuestionRendererView', () => {
   });
 
   it('renders button group questions and forwards message choices', async () => {
-    const onDismissNode = vi.fn();
-
     render(
       <QuestionRendererView
         {...baseProps}
@@ -42,7 +40,6 @@ describe('QuestionRendererView', () => {
           node: 'agentIdentity',
           prompt: 'Pick one',
         }}
-        onDismissNode={onDismissNode}
       />,
     );
 
@@ -51,7 +48,6 @@ describe('QuestionRendererView', () => {
     expect(sendMessage).toHaveBeenCalledWith('hello from hint');
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledTimes(1);
-      expect(onDismissNode).toHaveBeenCalledWith('agentIdentity');
     });
   });
 
@@ -136,8 +132,6 @@ describe('QuestionRendererView', () => {
   });
 
   it('formats form submissions as question-answer text', async () => {
-    const onDismissNode = vi.fn();
-
     render(
       <QuestionRendererView
         {...baseProps}
@@ -163,7 +157,6 @@ describe('QuestionRendererView', () => {
           node: 'userIdentity',
           prompt: 'About you',
         }}
-        onDismissNode={onDismissNode}
       />,
     );
 
@@ -178,9 +171,6 @@ describe('QuestionRendererView', () => {
     expect(sendMessage).toHaveBeenCalledWith(
       ['Q: Role', 'A: Independent developer', '', 'Q: Name', 'A: Ada'].join('\n'),
     );
-    await waitFor(() => {
-      expect(onDismissNode).toHaveBeenCalledWith('userIdentity');
-    });
   });
 
   it('submits the form when pressing Enter in a text input', async () => {

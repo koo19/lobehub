@@ -16,7 +16,7 @@ import type { QuestionRendererViewProps } from './QuestionRendererView';
 
 export interface QuestionRendererRuntimeProps extends Omit<
   QuestionRendererViewProps,
-  'currentQuestion' | 'onDismissNode'
+  'currentQuestion'
 > {}
 
 export const useQuestionRendererRuntime = (): QuestionRendererRuntimeProps => {

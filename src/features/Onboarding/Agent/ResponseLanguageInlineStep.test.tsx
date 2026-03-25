@@ -49,9 +49,7 @@ describe('ResponseLanguageInlineStep', () => {
   });
 
   it('renders the built-in response-language node through the shared question UI', () => {
-    const onDismissNode = vi.fn();
-
-    render(<ResponseLanguageInlineStep onDismissNode={onDismissNode} />);
+    render(<ResponseLanguageInlineStep />);
 
     expect(screen.getByTestId('question-renderer-view')).toBeInTheDocument();
     const [props] = questionRendererViewSpy.mock.calls[0];
@@ -74,7 +72,6 @@ describe('ResponseLanguageInlineStep', () => {
           prompt: 'responseLanguage.title',
           submitMode: 'message',
         },
-        onDismissNode,
       }),
     );
   });

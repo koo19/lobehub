@@ -4,12 +4,18 @@ import { UserAgentOnboardingUpdateSchema } from '@lobechat/types';
 import { merge } from '@lobechat/utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AgentModel } from '@/database/models/agent';
 import { MessageModel } from '@/database/models/message';
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
 import { AgentService } from '@/server/services/agent';
+import { AgentDocumentsService } from '@/server/services/agentDocuments';
 
 import { OnboardingService } from './index';
+
+vi.mock('@/database/models/agent', () => ({
+  AgentModel: vi.fn(),
+}));
 
 vi.mock('@/database/models/message', () => ({
   MessageModel: vi.fn(),
@@ -34,13 +40,25 @@ vi.mock('@/server/services/agent', () => ({
   AgentService: vi.fn(),
 }));
 
+vi.mock('@/server/services/agentDocuments', () => ({
+  AgentDocumentsService: vi.fn(),
+}));
+
 describe('OnboardingService', () => {
-  const mockDb = {} as any;
   const userId = 'user-1';
 
+  let mockAgentDocumentsService: {
+    deleteTemplateDocuments: ReturnType<typeof vi.fn>;
+    getAgentDocuments: ReturnType<typeof vi.fn>;
+    upsertDocument: ReturnType<typeof vi.fn>;
+  };
+  let mockAgentModel: {
+    getBuiltinAgent: ReturnType<typeof vi.fn>;
+  };
   let mockAgentService: {
     getBuiltinAgent: ReturnType<typeof vi.fn>;
   };
+  let mockDb: any;
   let mockMessageModel: {
     create: ReturnType<typeof vi.fn>;
     query: ReturnType<typeof vi.fn>;
@@ -57,6 +75,11 @@ describe('OnboardingService', () => {
     updateSetting: ReturnType<typeof vi.fn>;
     updateUser: ReturnType<typeof vi.fn>;
   };
+  let transactionUpdateCalls: Array<{
+    set: ReturnType<typeof vi.fn>;
+    table: unknown;
+    where: ReturnType<typeof vi.fn>;
+  }>;
 
   beforeEach(() => {
     persistedUserState = {
@@ -64,6 +87,22 @@ describe('OnboardingService', () => {
       fullName: undefined,
       interests: undefined,
       settings: {},
+    };
+    transactionUpdateCalls = [];
+
+    mockDb = {
+      transaction: vi.fn(async (callback) =>
+        callback({
+          update: vi.fn((table) => {
+            const where = vi.fn(async () => undefined);
+            const set = vi.fn(() => ({ where }));
+
+            transactionUpdateCalls.push({ set, table, where });
+
+            return { set };
+          }),
+        }),
+      ),
     };
 
     mockUserModel = {
@@ -98,7 +137,17 @@ describe('OnboardingService', () => {
     mockAgentService = {
       getBuiltinAgent: vi.fn(async () => ({ id: 'builtin-agent-1' })),
     };
+    mockAgentModel = {
+      getBuiltinAgent: vi.fn(async () => ({ id: 'inbox-agent-1' })),
+    };
+    mockAgentDocumentsService = {
+      deleteTemplateDocuments: vi.fn(async () => undefined),
+      getAgentDocuments: vi.fn(async () => []),
+      upsertDocument: vi.fn(async () => undefined),
+    };
 
+    vi.mocked(AgentModel).mockImplementation(() => mockAgentModel as any);
+    vi.mocked(AgentDocumentsService).mockImplementation(() => mockAgentDocumentsService as any);
     vi.mocked(MessageModel).mockImplementation(() => mockMessageModel as any);
     vi.mocked(UserModel).mockImplementation(() => mockUserModel as any);
     vi.mocked(TopicModel).mockImplementation(() => mockTopicModel as any);
@@ -203,6 +252,19 @@ describe('OnboardingService', () => {
       vibe: 'warm and sharp',
     });
     expect(persistedUserState.agentOnboarding.completedNodes).toEqual(['agentIdentity']);
+    expect(mockAgentModel.getBuiltinAgent).toHaveBeenCalledWith('inbox');
+    expect(mockAgentDocumentsService.upsertDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'inbox-agent-1',
+        filename: 'IDENTITY.md',
+      }),
+    );
+    expect(mockAgentDocumentsService.upsertDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'inbox-agent-1',
+        filename: 'SOUL.md',
+      }),
+    );
   });
 
   it('stores partial drafts and reports missing required fields', async () => {
@@ -441,6 +503,68 @@ describe('OnboardingService', () => {
     expect(persistedUserState.agentOnboarding.completedNodes).toContain('summary');
   });
 
+  it('transfers the onboarding topic to the inbox agent when finishing', async () => {
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-1',
+      completedNodes: [
+        'agentIdentity',
+        'userIdentity',
+        'workStyle',
+        'workContext',
+        'painPoints',
+        'responseLanguage',
+      ],
+      draft: {},
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+    mockTopicModel.findById.mockResolvedValue({ agentId: 'web-onboarding-agent', id: 'topic-1' });
+
+    const service = new OnboardingService(mockDb as any, userId);
+    const result = await service.finishOnboarding();
+
+    expect(result.success).toBe(true);
+    expect(mockDb.transaction).toHaveBeenCalledTimes(1);
+    expect(transactionUpdateCalls).toHaveLength(3);
+
+    for (const call of transactionUpdateCalls) {
+      expect(call.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'inbox-agent-1',
+        }),
+      );
+    }
+  });
+
+  it('is idempotent when finishOnboarding is called after completion', async () => {
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-1',
+      completedNodes: [
+        'agentIdentity',
+        'userIdentity',
+        'workStyle',
+        'workContext',
+        'painPoints',
+        'responseLanguage',
+        'summary',
+      ],
+      draft: {},
+      finishedAt: '2026-03-24T00:00:00.000Z',
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+    mockTopicModel.findById.mockResolvedValue({ agentId: 'inbox-agent-1', id: 'topic-1' });
+
+    const service = new OnboardingService(mockDb as any, userId);
+    const result = await service.finishOnboarding();
+
+    expect(result).toEqual({
+      content: 'Agent onboarding already completed.',
+      finishedAt: '2026-03-24T00:00:00.000Z',
+      success: true,
+    });
+    expect(mockUserModel.updateUser).not.toHaveBeenCalled();
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+  });
+
   it('preserves flat node-scoped patch fields in the update schema', () => {
     const parsed = UserAgentOnboardingUpdateSchema.parse({
       node: 'agentIdentity',
@@ -502,6 +626,11 @@ describe('OnboardingService', () => {
     });
     expect(mockTopicModel.delete).not.toHaveBeenCalled();
     expect(persistedUserState.agentOnboarding).toEqual(result);
+    expect(mockAgentDocumentsService.deleteTemplateDocuments).toHaveBeenCalledWith(
+      'inbox-agent-1',
+      'claw',
+    );
+    expect(mockAgentDocumentsService.upsertDocument).toHaveBeenCalledTimes(3);
   });
 
   it('creates a new onboarding topic after reset clears the active topic pointer', async () => {

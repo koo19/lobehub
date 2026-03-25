@@ -1,6 +1,6 @@
 'use client';
 
-import type { UserAgentOnboardingNode, UserAgentOnboardingQuestion } from '@lobechat/types';
+import type { UserAgentOnboardingQuestion } from '@lobechat/types';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -10,11 +10,7 @@ import { userGeneralSettingsSelectors } from '@/store/user/selectors';
 import { useQuestionRendererRuntime } from './questionRendererRuntime';
 import QuestionRendererView from './QuestionRendererView';
 
-interface ResponseLanguageInlineStepProps {
-  onDismissNode?: (node: UserAgentOnboardingNode) => void;
-}
-
-const ResponseLanguageInlineStep = memo<ResponseLanguageInlineStepProps>(({ onDismissNode }) => {
+const ResponseLanguageInlineStep = memo(() => {
   const { t } = useTranslation('onboarding');
   const runtime = useQuestionRendererRuntime();
   const currentResponseLanguage = useUserStore(
@@ -41,13 +37,7 @@ const ResponseLanguageInlineStep = memo<ResponseLanguageInlineStepProps>(({ onDi
     [currentResponseLanguage, t],
   );
 
-  return (
-    <QuestionRendererView
-      currentQuestion={currentQuestion}
-      onDismissNode={onDismissNode}
-      {...runtime}
-    />
-  );
+  return <QuestionRendererView currentQuestion={currentQuestion} {...runtime} />;
 });
 
 ResponseLanguageInlineStep.displayName = 'ResponseLanguageInlineStep';

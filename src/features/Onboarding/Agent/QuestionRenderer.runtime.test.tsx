@@ -84,9 +84,7 @@ describe('QuestionRenderer runtime', () => {
     vi.clearAllMocks();
   });
 
-  it('dismisses the inline question without waiting for the full send lifecycle', async () => {
-    const onDismissNode = vi.fn();
-
+  it('dispatches send message without waiting for the full send lifecycle', async () => {
     sendMessage.mockImplementation(
       () =>
         new Promise(() => {
@@ -113,7 +111,6 @@ describe('QuestionRenderer runtime', () => {
           node: 'agentIdentity',
           prompt: 'Pick one',
         }}
-        onDismissNode={onDismissNode}
       />,
     );
 
@@ -121,7 +118,6 @@ describe('QuestionRenderer runtime', () => {
 
     await waitFor(() => {
       expect(sendMessage).toHaveBeenCalledWith({ message: 'hello from hint' });
-      expect(onDismissNode).toHaveBeenCalledWith('agentIdentity');
     });
   });
 });

@@ -6,12 +6,16 @@ import type * as EnvModule from '@/utils/env';
 
 import AgentOnboardingConversation from './Conversation';
 
-const { chatInputSpy, mockState } = vi.hoisted(() => ({
-  chatInputSpy: vi.fn(),
-  mockState: {
-    displayMessages: [] as Array<{ content?: string; id: string; role: string }>,
-  },
-}));
+const { chatInputSpy, finishOnboardingSpy, mockState, navigateSpy, refreshUserStateSpy } =
+  vi.hoisted(() => ({
+    chatInputSpy: vi.fn(),
+    finishOnboardingSpy: vi.fn(),
+    mockState: {
+      displayMessages: [] as Array<{ content?: string; id: string; role: string }>,
+    },
+    navigateSpy: vi.fn(),
+    refreshUserStateSpy: vi.fn(),
+  }));
 
 vi.mock('@/utils/env', async (importOriginal) => {
   const actual = await importOriginal<typeof EnvModule>();
@@ -69,37 +73,79 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigateSpy,
+}));
+
+vi.mock('@/services/user', () => ({
+  userService: {
+    finishOnboarding: finishOnboardingSpy,
+  },
+}));
+
+vi.mock('@/store/user', () => ({
+  useUserStore: (selector: (state: { refreshUserState: typeof refreshUserStateSpy }) => unknown) =>
+    selector({
+      refreshUserState: refreshUserStateSpy,
+    }),
+}));
+
 vi.mock('./QuestionRenderer', () => ({
   default: ({
     currentQuestion,
-    onDismissNode,
   }: {
     currentQuestion?: { id: string; node?: string; prompt?: string };
-    onDismissNode?: (node: string) => void;
   }) => (
     <div data-testid="structured-actions">
       <div>{currentQuestion?.id}</div>
       <div>{currentQuestion?.node}</div>
       <div>{currentQuestion?.prompt}</div>
-      {currentQuestion && (
-        <button onClick={() => onDismissNode?.(currentQuestion.node!)}>dismiss</button>
-      )}
+    </div>
+  ),
+}));
+
+vi.mock('./questionRendererRuntime', () => ({
+  useQuestionRendererRuntime: () => ({
+    fallbackQuestionDescription: 'agent.summaryHint',
+    fallbackTextFieldLabel: 'agent.summaryHint',
+    fallbackTextFieldPlaceholder: 'agent.summaryHint',
+    loading: false,
+    nextLabel: 'next',
+    onChangeResponseLanguage: vi.fn(),
+    onSendMessage: vi.fn(),
+    renderEmojiPicker: vi.fn(),
+    responseLanguageOptions: [],
+    submitLabel: 'next',
+  }),
+}));
+
+vi.mock('./QuestionRendererView', () => ({
+  default: ({
+    currentQuestion,
+    onSendMessage,
+  }: {
+    currentQuestion?: { id: string; prompt?: string };
+    onSendMessage?: (message: string) => Promise<void> | void;
+  }) => (
+    <div data-testid="completion-actions">
+      <div>{currentQuestion?.id}</div>
+      <div>{currentQuestion?.prompt}</div>
+      <button onClick={() => onSendMessage?.('finish-onboarding')}>complete</button>
     </div>
   ),
 }));
 
 vi.mock('./ResponseLanguageInlineStep', () => ({
-  default: ({ onDismissNode }: { onDismissNode?: (node: string) => void }) => (
-    <div data-testid="response-language-inline-step">
-      <button onClick={() => onDismissNode?.('responseLanguage')}>dismiss-response-language</button>
-    </div>
-  ),
+  default: () => <div data-testid="response-language-inline-step" />,
 }));
 
 describe('AgentOnboardingConversation', () => {
   beforeEach(() => {
     chatInputSpy.mockClear();
+    finishOnboardingSpy.mockReset();
     mockState.displayMessages = [];
+    navigateSpy.mockReset();
+    refreshUserStateSpy.mockReset();
   });
 
   it('renders structured actions inside the assistant message and disables expand + runtime config in chat input', () => {
@@ -208,10 +254,10 @@ describe('AgentOnboardingConversation', () => {
     });
   });
 
-  it('hides the current question after it is dismissed locally', () => {
+  it('hides the current question after a new message is submitted', () => {
     mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
 
-    render(
+    const { rerender } = render(
       <AgentOnboardingConversation
         activeNode="agentIdentity"
         currentQuestion={
@@ -225,7 +271,26 @@ describe('AgentOnboardingConversation', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'dismiss' }));
+    expect(screen.getByTestId('structured-actions')).toBeInTheDocument();
+
+    mockState.displayMessages = [
+      { id: 'assistant-1', role: 'assistant' },
+      { id: 'user-1', role: 'user' },
+    ];
+
+    rerender(
+      <AgentOnboardingConversation
+        activeNode="agentIdentity"
+        currentQuestion={
+          {
+            id: 'agent-identity-question',
+            mode: 'form',
+            node: 'agentIdentity',
+            prompt: '先把我定下来吧。',
+          } as any
+        }
+      />,
+    );
 
     expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
@@ -263,13 +328,47 @@ describe('AgentOnboardingConversation', () => {
     expect(screen.queryByTestId('structured-actions')).not.toBeInTheDocument();
   });
 
-  it('hides the built-in response language step after it is dismissed locally', () => {
+  it('hides the built-in response language step after a new message is submitted', () => {
     mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
 
-    render(<AgentOnboardingConversation activeNode="responseLanguage" />);
+    const { rerender } = render(<AgentOnboardingConversation activeNode="responseLanguage" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'dismiss-response-language' }));
+    expect(screen.getByTestId('response-language-inline-step')).toBeInTheDocument();
+
+    mockState.displayMessages = [
+      { id: 'assistant-1', role: 'assistant' },
+      { id: 'user-1', role: 'user' },
+    ];
+
+    // Pass readOnly={false} (same behavioral effect as omitting it) to bypass memo's
+    // shallow-equal check, since the mock store has no subscription mechanism.
+    rerender(<AgentOnboardingConversation activeNode="responseLanguage" readOnly={false} />);
 
     expect(screen.queryByTestId('response-language-inline-step')).not.toBeInTheDocument();
+  });
+
+  it('renders the completion CTA on the summary step', () => {
+    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+
+    render(<AgentOnboardingConversation activeNode="summary" />);
+
+    expect(screen.getByTestId('completion-actions')).toHaveTextContent('finish-onboarding');
+    expect(screen.getByTestId('completion-actions')).toHaveTextContent('finish');
+  });
+
+  it('finishes onboarding and navigates to inbox when the completion CTA is clicked', async () => {
+    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+    finishOnboardingSpy.mockResolvedValue({ success: true });
+    refreshUserStateSpy.mockResolvedValue(undefined);
+
+    render(<AgentOnboardingConversation activeNode="summary" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'complete' }));
+
+    await waitFor(() => {
+      expect(finishOnboardingSpy).toHaveBeenCalledTimes(1);
+      expect(refreshUserStateSpy).toHaveBeenCalledTimes(1);
+      expect(navigateSpy).toHaveBeenCalledWith('/');
+    });
   });
 });

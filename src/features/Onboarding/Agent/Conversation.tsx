@@ -3,8 +3,10 @@
 import type { UserAgentOnboardingNode, UserAgentOnboardingQuestion } from '@lobechat/types';
 import { Avatar, Flexbox, Markdown, Text } from '@lobehub/ui';
 import { Divider } from 'antd';
+import type { CSSProperties } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 
 import type { ActionKeys } from '@/features/ChatInput';
 import {
@@ -15,9 +17,13 @@ import {
   useConversationStore,
 } from '@/features/Conversation';
 import { useAgentMeta } from '@/features/Conversation/hooks/useAgentMeta';
+import { userService } from '@/services/user';
+import { useUserStore } from '@/store/user';
 import { isDev } from '@/utils/env';
 
 import QuestionRenderer from './QuestionRenderer';
+import { useQuestionRendererRuntime } from './questionRendererRuntime';
+import QuestionRendererView from './QuestionRendererView';
 import ResponseLanguageInlineStep from './ResponseLanguageInlineStep';
 import { staticStyle } from './staticStyle';
 
@@ -31,45 +37,53 @@ interface AgentOnboardingConversationProps {
 
 const chatInputLeftActions: ActionKeys[] = isDev ? ['model'] : [];
 
+const greetingCenterStyle: CSSProperties = { flex: 1, minHeight: '100%' };
+const agentTitleStyle: CSSProperties = { fontSize: 12, fontWeight: 500 };
+const outerContainerStyle: CSSProperties = { minHeight: 0 };
+const scrollContainerStyle: CSSProperties = {
+  minHeight: 0,
+  overflowX: 'hidden',
+  overflowY: 'auto',
+  position: 'relative',
+};
+
 const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
   ({ activeNode, currentQuestion, readOnly }) => {
     const { t } = useTranslation('onboarding');
     const agentMeta = useAgentMeta();
-    const [dismissedNodes, setDismissedNodes] = useState<string[]>([]);
+    const navigate = useNavigate();
+    const refreshUserState = useUserStore((s) => s.refreshUserState);
+    const questionRendererRuntime = useQuestionRendererRuntime();
+    const [isFinishing, setIsFinishing] = useState(false);
+    const isFinishingRef = useRef(false);
     const displayMessages = useConversationStore(conversationSelectors.displayMessages);
     const questionSignature = useMemo(
       () => JSON.stringify({ activeNode, currentQuestion: currentQuestion || null }),
       [activeNode, currentQuestion],
     );
     const lastQuestionSignatureRef = useRef(questionSignature);
+    const messageCountAtQuestionRef = useRef(displayMessages.length);
 
     useEffect(() => {
       if (lastQuestionSignatureRef.current === questionSignature) return;
 
       lastQuestionSignatureRef.current = questionSignature;
-      setDismissedNodes([]);
-    }, [questionSignature]);
+      messageCountAtQuestionRef.current = displayMessages.length;
+    }, [questionSignature, displayMessages.length]);
 
-    const visibleQuestion = useMemo(() => {
-      if (readOnly || !currentQuestion) return undefined;
+    const dismissedBySubmit = displayMessages.length > messageCountAtQuestionRef.current;
 
-      const dismissedNodeSet = new Set(dismissedNodes);
-
-      return dismissedNodeSet.has(currentQuestion.node) ? undefined : currentQuestion;
-    }, [currentQuestion, dismissedNodes, readOnly]);
+    const visibleQuestion =
+      readOnly || !currentQuestion || dismissedBySubmit ? undefined : currentQuestion;
     const shouldRenderResponseLanguageStep = !readOnly && activeNode === 'responseLanguage';
 
     const lastAssistantMessageId = useMemo(() => {
-      for (const message of [...displayMessages].reverse()) {
-        if (assistantLikeRoles.has(message.role)) return message.id;
+      for (let i = displayMessages.length - 1; i >= 0; i--) {
+        if (assistantLikeRoles.has(displayMessages[i].role)) return displayMessages[i].id;
       }
 
       return undefined;
     }, [displayMessages]);
-
-    const handleDismissNode = useCallback((node: UserAgentOnboardingNode) => {
-      setDismissedNodes((state) => (state.includes(node) ? state : [...state, node]));
-    }, []);
 
     const isGreetingState = useMemo(() => {
       if (displayMessages.length !== 1) return false;
@@ -107,6 +121,47 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
       [t],
     );
 
+    const completionQuestion = useMemo<UserAgentOnboardingQuestion>(
+      () => ({
+        choices: [
+          {
+            id: 'finish-onboarding',
+            label: t('finish'),
+            payload: {
+              kind: 'message',
+              message: 'finish-onboarding',
+            },
+            style: 'primary',
+          },
+        ],
+        description: t('agent.summaryHint'),
+        id: 'finish-onboarding',
+        mode: 'button_group',
+        node: 'summary',
+        prompt: t('finish'),
+        submitMode: 'message',
+      }),
+      [t],
+    );
+
+    const handleFinishOnboarding = useCallback(async () => {
+      if (isFinishingRef.current) return;
+
+      isFinishingRef.current = true;
+      setIsFinishing(true);
+
+      try {
+        await userService.finishOnboarding();
+        await refreshUserState();
+        navigate('/');
+      } catch (error) {
+        console.error('[AgentOnboardingConversation] Failed to finish onboarding:', error);
+      } finally {
+        isFinishingRef.current = false;
+        setIsFinishing(false);
+      }
+    }, [navigate, refreshUserState]);
+
     const itemContent = useCallback(
       (index: number, id: string) => {
         const isLatestItem = displayMessages.length === index + 1;
@@ -116,28 +171,38 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
             ? presetGreetingQuestion
             : visibleQuestion;
         const effectiveStep =
-          shouldRenderResponseLanguageStep && !dismissedNodes.includes('responseLanguage')
-            ? 'responseLanguage'
-            : undefined;
+          shouldRenderResponseLanguageStep && !dismissedBySubmit ? 'responseLanguage' : undefined;
+        const showCompletionCTA = !readOnly && activeNode === 'summary';
+        const completionRender = !showCompletionCTA ? undefined : (
+          <div className={staticStyle.inlineQuestion}>
+            <QuestionRendererView
+              {...questionRendererRuntime}
+              currentQuestion={completionQuestion}
+              loading={questionRendererRuntime.loading || isFinishing}
+              onSendMessage={handleFinishOnboarding}
+            />
+          </div>
+        );
 
         const endRender =
           id !== lastAssistantMessageId ? undefined : effectiveStep ? (
             <div className={staticStyle.inlineQuestion}>
-              <ResponseLanguageInlineStep onDismissNode={handleDismissNode} />
+              <ResponseLanguageInlineStep />
             </div>
+          ) : showCompletionCTA ? (
+            completionRender
           ) : effectiveQuestion ? (
             <div className={staticStyle.inlineQuestion}>
-              <QuestionRenderer
-                currentQuestion={effectiveQuestion}
-                onDismissNode={handleDismissNode}
-              />
+              <QuestionRenderer currentQuestion={effectiveQuestion} />
             </div>
-          ) : undefined;
+          ) : (
+            completionRender
+          );
 
         if (isGreetingState && index === 0) {
           const message = displayMessages[0];
           return (
-            <Flexbox align={'center'} justify={'center'} style={{ flex: 1, minHeight: '100%' }}>
+            <Flexbox align={'center'} justify={'center'} style={greetingCenterStyle}>
               <Flexbox className={staticStyle.greetingWrap} gap={16}>
                 <Flexbox horizontal align={'flex-start'} gap={12}>
                   <Avatar
@@ -148,7 +213,7 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
                     size={36}
                   />
                   <Flexbox gap={4}>
-                    <Text style={{ fontSize: 12, fontWeight: 500 }} type={'secondary'}>
+                    <Text style={agentTitleStyle} type={'secondary'}>
                       {agentMeta.title}
                     </Text>
                     <Markdown className={staticStyle.greetingText} variant={'chat'}>
@@ -173,31 +238,26 @@ const AgentOnboardingConversation = memo<AgentOnboardingConversationProps>(
       },
       [
         agentMeta,
+        dismissedBySubmit,
         displayMessages,
-        handleDismissNode,
         isGreetingState,
         lastAssistantMessageId,
         presetGreetingQuestion,
         readOnly,
         currentQuestion,
-        dismissedNodes,
+        activeNode,
+        completionQuestion,
+        handleFinishOnboarding,
+        isFinishing,
+        questionRendererRuntime,
         shouldRenderResponseLanguageStep,
         visibleQuestion,
       ],
     );
 
     return (
-      <Flexbox flex={1} gap={16} style={{ minHeight: 0 }} width={'100%'}>
-        <Flexbox
-          flex={1}
-          width={'100%'}
-          style={{
-            minHeight: 0,
-            overflowX: 'hidden',
-            overflowY: 'auto',
-            position: 'relative',
-          }}
-        >
+      <Flexbox flex={1} gap={16} style={outerContainerStyle} width={'100%'}>
+        <Flexbox flex={1} style={scrollContainerStyle} width={'100%'}>
           <ChatList itemContent={itemContent} />
         </Flexbox>
 

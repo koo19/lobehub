@@ -12,28 +12,25 @@ import type {
 } from '@lobechat/types';
 import { AGENT_ONBOARDING_NODES, MAX_ONBOARDING_STEPS } from '@lobechat/types';
 import { merge } from '@lobechat/utils';
+import { and, eq } from 'drizzle-orm';
 
+import { AgentModel } from '@/database/models/agent';
+import { getDocumentTemplate } from '@/database/models/agentDocuments/templates';
 import { MessageModel } from '@/database/models/message';
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
+import { messages, threads, topics } from '@/database/schemas';
 import type { LobeChatDatabase } from '@/database/type';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { AgentService } from '@/server/services/agent';
+import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { translation } from '@/server/translation';
 
-type OnboardingAgentIdentity = NonNullable<UserAgentOnboarding['agentIdentity']>;
+import { buildIdentityDocument, buildSoulDocument } from './documentHelpers';
+import { NODE_HANDLERS, PROFILE_DOCUMENT_NODES } from './nodeHandlers';
+import { getNodeDraftState } from './nodeSchema';
+
 type OnboardingPatchInput = Record<string, unknown>;
-type OnboardingDraftAgentIdentity = NonNullable<UserAgentOnboardingDraft['agentIdentity']>;
-type OnboardingDraftPainPoints = NonNullable<UserAgentOnboardingDraft['painPoints']>;
-type OnboardingDraftUserIdentity = NonNullable<UserAgentOnboardingDraft['userIdentity']>;
-type OnboardingDraftWorkContext = NonNullable<UserAgentOnboardingDraft['workContext']>;
-type OnboardingDraftWorkStyle = NonNullable<UserAgentOnboardingDraft['workStyle']>;
-type OnboardingPainPoints = NonNullable<NonNullable<UserAgentOnboarding['profile']>['painPoints']>;
-type OnboardingUserIdentity = NonNullable<NonNullable<UserAgentOnboarding['profile']>['identity']>;
-type OnboardingWorkContext = NonNullable<
-  NonNullable<UserAgentOnboarding['profile']>['workContext']
->;
-type OnboardingWorkStyle = NonNullable<NonNullable<UserAgentOnboarding['profile']>['workStyle']>;
 
 const ONBOARDING_TOOL_NAMES = [
   'getOnboardingState',
@@ -71,61 +68,8 @@ const getFirstIncompleteNode = (completedNodes: UserAgentOnboardingNode[] = []) 
 
 const dedupeNodes = (nodes: UserAgentOnboardingNode[] = []) => Array.from(new Set(nodes));
 
-const sanitizeText = (value?: string) => value?.trim() || undefined;
-
-const sanitizeTextList = (items?: string[], max = 8) =>
-  (items ?? [])
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, max);
-
 const getNodeIndex = (node?: UserAgentOnboardingNode) =>
   node ? AGENT_ONBOARDING_NODES.indexOf(node) : -1;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const asString = (value: unknown) => (typeof value === 'string' ? value : undefined);
-
-const asStringArray = (value: unknown) =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-
-const NODE_FIELDS = {
-  agentIdentity: ['emoji', 'name', 'nature', 'vibe'],
-  painPoints: ['blockedBy', 'frustrations', 'noTimeFor', 'summary'],
-  userIdentity: ['domainExpertise', 'name', 'professionalRole', 'summary'],
-  workContext: [
-    'activeProjects',
-    'currentFocus',
-    'interests',
-    'summary',
-    'thisQuarter',
-    'thisWeek',
-    'tools',
-  ],
-  workStyle: [
-    'communicationStyle',
-    'decisionMaking',
-    'socialMode',
-    'summary',
-    'thinkingPreferences',
-    'workStyle',
-  ],
-} as const satisfies Partial<Record<UserAgentOnboardingNode, readonly string[]>>;
-
-const REQUIRED_FIELDS_BY_NODE = {
-  agentIdentity: ['emoji', 'name', 'nature', 'vibe'],
-  painPoints: ['summary'],
-  responseLanguage: ['responseLanguage'],
-  userIdentity: ['summary'],
-  workContext: ['summary'],
-  workStyle: ['summary'],
-} as const satisfies Partial<Record<UserAgentOnboardingNode, readonly string[]>>;
-
-interface OnboardingNodeDraftState {
-  missingFields?: string[];
-  status: 'complete' | 'empty' | 'partial';
-}
 
 interface OnboardingError {
   code: 'INCOMPLETE_NODE_DATA' | 'INVALID_PATCH_SHAPE' | 'NODE_MISMATCH' | 'ONBOARDING_COMPLETE';
@@ -141,7 +85,7 @@ interface CommitStepResult {
 
 interface ProposePatchResult {
   activeNode?: UserAgentOnboardingNode;
-  activeNodeDraftState?: OnboardingNodeDraftState;
+  activeNodeDraftState?: { missingFields?: string[]; status: 'complete' | 'empty' | 'partial' };
   committedValue?: unknown;
   content: string;
   control?: UserAgentOnboardingControl;
@@ -166,367 +110,13 @@ interface AskQuestionResult {
   success: boolean;
 }
 
-const getScopedPatch = (node: UserAgentOnboardingNode, patch: OnboardingPatchInput) => {
-  const nestedPatch = isRecord(patch[node]) ? patch[node] : undefined;
-  const scopedKeys = NODE_FIELDS[node as keyof typeof NODE_FIELDS] ?? [];
-  const scopedPatch: OnboardingPatchInput = {};
-
-  for (const key of scopedKeys) {
-    const value = patch[key] ?? nestedPatch?.[key];
-
-    if (value !== undefined) scopedPatch[key] = value;
-  }
-
-  return scopedPatch;
-};
-
-const getMissingFields = (node: UserAgentOnboardingNode, patch: OnboardingPatchInput) => {
-  const requiredFields =
-    REQUIRED_FIELDS_BY_NODE[node as keyof typeof REQUIRED_FIELDS_BY_NODE] ?? [];
-
-  return requiredFields.filter((key) => {
-    const value = patch[key];
-
-    if (Array.isArray(value)) return value.length === 0;
-    if (typeof value === 'string') return !value.trim();
-
-    return value === undefined;
-  });
-};
-
-const normalizeAgentIdentityDraft = (value?: unknown): OnboardingDraftAgentIdentity | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const emoji = sanitizeText(asString(patch?.emoji));
-  const name = sanitizeText(asString(patch?.name));
-  const nature = sanitizeText(asString(patch?.nature));
-  const vibe = sanitizeText(asString(patch?.vibe));
-  const nextDraft = {
-    ...(emoji ? { emoji } : {}),
-    ...(name ? { name } : {}),
-    ...(nature ? { nature } : {}),
-    ...(vibe ? { vibe } : {}),
-  };
-
-  return Object.keys(nextDraft).length > 0 ? nextDraft : undefined;
-};
-
-const normalizeAgentIdentity = (value?: unknown): OnboardingAgentIdentity | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const emoji = sanitizeText(asString(patch?.emoji));
-  const name = sanitizeText(asString(patch?.name));
-  const nature = sanitizeText(asString(patch?.nature));
-  const vibe = sanitizeText(asString(patch?.vibe));
-
-  if (!emoji || !name || !nature || !vibe) return undefined;
-
-  return { emoji, name, nature, vibe };
-};
-
-const normalizeUserIdentityDraft = (value?: unknown): OnboardingDraftUserIdentity | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-  const nextDraft = {
-    ...(sanitizeText(asString(patch?.domainExpertise))
-      ? { domainExpertise: sanitizeText(asString(patch?.domainExpertise)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.name)) ? { name: sanitizeText(asString(patch?.name)) } : {}),
-    ...(sanitizeText(asString(patch?.professionalRole))
-      ? { professionalRole: sanitizeText(asString(patch?.professionalRole)) }
-      : {}),
-    ...(summary ? { summary } : {}),
-  };
-
-  return Object.keys(nextDraft).length > 0 ? nextDraft : undefined;
-};
-
-const normalizeUserIdentity = (value?: unknown): OnboardingUserIdentity | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-
-  if (!summary) return undefined;
-
-  return {
-    ...(sanitizeText(asString(patch?.domainExpertise))
-      ? { domainExpertise: sanitizeText(asString(patch?.domainExpertise)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.name)) ? { name: sanitizeText(asString(patch?.name)) } : {}),
-    ...(sanitizeText(asString(patch?.professionalRole))
-      ? { professionalRole: sanitizeText(asString(patch?.professionalRole)) }
-      : {}),
-    summary,
-  };
-};
-
-const normalizeWorkStyleDraft = (value?: unknown): OnboardingDraftWorkStyle | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-  const nextDraft = {
-    ...(sanitizeText(asString(patch?.communicationStyle))
-      ? { communicationStyle: sanitizeText(asString(patch?.communicationStyle)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.decisionMaking))
-      ? { decisionMaking: sanitizeText(asString(patch?.decisionMaking)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.socialMode))
-      ? { socialMode: sanitizeText(asString(patch?.socialMode)) }
-      : {}),
-    ...(summary ? { summary } : {}),
-    ...(sanitizeText(asString(patch?.thinkingPreferences))
-      ? { thinkingPreferences: sanitizeText(asString(patch?.thinkingPreferences)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.workStyle))
-      ? { workStyle: sanitizeText(asString(patch?.workStyle)) }
-      : {}),
-  };
-
-  return Object.keys(nextDraft).length > 0 ? nextDraft : undefined;
-};
-
-const normalizeWorkStyle = (value?: unknown): OnboardingWorkStyle | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-
-  if (!summary) return undefined;
-
-  return {
-    ...(sanitizeText(asString(patch?.communicationStyle))
-      ? { communicationStyle: sanitizeText(asString(patch?.communicationStyle)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.decisionMaking))
-      ? { decisionMaking: sanitizeText(asString(patch?.decisionMaking)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.socialMode))
-      ? { socialMode: sanitizeText(asString(patch?.socialMode)) }
-      : {}),
-    summary,
-    ...(sanitizeText(asString(patch?.thinkingPreferences))
-      ? { thinkingPreferences: sanitizeText(asString(patch?.thinkingPreferences)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.workStyle))
-      ? { workStyle: sanitizeText(asString(patch?.workStyle)) }
-      : {}),
-  };
-};
-
-const normalizeWorkContextDraft = (value?: unknown): OnboardingDraftWorkContext | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-  const activeProjects = sanitizeTextList(asStringArray(patch?.activeProjects));
-  const interests = sanitizeTextList(asStringArray(patch?.interests));
-  const tools = sanitizeTextList(asStringArray(patch?.tools));
-  const nextDraft = {
-    ...(activeProjects.length > 0 ? { activeProjects } : {}),
-    ...(sanitizeText(asString(patch?.currentFocus))
-      ? { currentFocus: sanitizeText(asString(patch?.currentFocus)) }
-      : {}),
-    ...(interests.length > 0 ? { interests } : {}),
-    ...(summary ? { summary } : {}),
-    ...(sanitizeText(asString(patch?.thisQuarter))
-      ? { thisQuarter: sanitizeText(asString(patch?.thisQuarter)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.thisWeek))
-      ? { thisWeek: sanitizeText(asString(patch?.thisWeek)) }
-      : {}),
-    ...(tools.length > 0 ? { tools } : {}),
-  };
-
-  return Object.keys(nextDraft).length > 0 ? nextDraft : undefined;
-};
-
-const normalizeWorkContext = (value?: unknown): OnboardingWorkContext | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-
-  if (!summary) return undefined;
-
-  const activeProjects = sanitizeTextList(asStringArray(patch?.activeProjects));
-  const interests = sanitizeTextList(asStringArray(patch?.interests));
-  const tools = sanitizeTextList(asStringArray(patch?.tools));
-
-  return {
-    ...(activeProjects.length > 0 ? { activeProjects } : {}),
-    ...(sanitizeText(asString(patch?.currentFocus))
-      ? { currentFocus: sanitizeText(asString(patch?.currentFocus)) }
-      : {}),
-    ...(interests.length > 0 ? { interests } : {}),
-    summary,
-    ...(sanitizeText(asString(patch?.thisQuarter))
-      ? { thisQuarter: sanitizeText(asString(patch?.thisQuarter)) }
-      : {}),
-    ...(sanitizeText(asString(patch?.thisWeek))
-      ? { thisWeek: sanitizeText(asString(patch?.thisWeek)) }
-      : {}),
-    ...(tools.length > 0 ? { tools } : {}),
-  };
-};
-
-const normalizePainPointsDraft = (value?: unknown): OnboardingDraftPainPoints | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-  const blockedBy = sanitizeTextList(asStringArray(patch?.blockedBy));
-  const frustrations = sanitizeTextList(asStringArray(patch?.frustrations));
-  const noTimeFor = sanitizeTextList(asStringArray(patch?.noTimeFor));
-  const nextDraft = {
-    ...(blockedBy.length > 0 ? { blockedBy } : {}),
-    ...(frustrations.length > 0 ? { frustrations } : {}),
-    ...(noTimeFor.length > 0 ? { noTimeFor } : {}),
-    ...(summary ? { summary } : {}),
-  };
-
-  return Object.keys(nextDraft).length > 0 ? nextDraft : undefined;
-};
-
-const normalizePainPoints = (value?: unknown): OnboardingPainPoints | undefined => {
-  const patch = isRecord(value) ? value : undefined;
-  const summary = sanitizeText(asString(patch?.summary));
-
-  if (!summary) return undefined;
-
-  const blockedBy = sanitizeTextList(asStringArray(patch?.blockedBy));
-  const frustrations = sanitizeTextList(asStringArray(patch?.frustrations));
-  const noTimeFor = sanitizeTextList(asStringArray(patch?.noTimeFor));
-
-  return {
-    ...(blockedBy.length > 0 ? { blockedBy } : {}),
-    ...(frustrations.length > 0 ? { frustrations } : {}),
-    ...(noTimeFor.length > 0 ? { noTimeFor } : {}),
-    summary,
-  };
-};
-
-const mergeDraftForNode = (
-  draft: UserAgentOnboardingDraft,
-  node: UserAgentOnboardingNode,
-  patch: unknown,
-) => {
-  const patchRecord = isRecord(patch) ? patch : {};
-
-  switch (node) {
-    case 'agentIdentity': {
-      return { ...draft, agentIdentity: { ...draft.agentIdentity, ...patchRecord } };
-    }
-    case 'userIdentity': {
-      return { ...draft, userIdentity: { ...draft.userIdentity, ...patchRecord } };
-    }
-    case 'workStyle': {
-      return { ...draft, workStyle: { ...draft.workStyle, ...patchRecord } };
-    }
-    case 'workContext': {
-      return { ...draft, workContext: { ...draft.workContext, ...patchRecord } };
-    }
-    case 'painPoints': {
-      return { ...draft, painPoints: { ...draft.painPoints, ...patchRecord } };
-    }
-    case 'responseLanguage': {
-      return { ...draft, responseLanguage: patch as string };
-    }
-    case 'summary': {
-      return draft;
-    }
-  }
-};
-
-const getDraftValueForNode = (draft: UserAgentOnboardingDraft, node: UserAgentOnboardingNode) => {
-  switch (node) {
-    case 'agentIdentity': {
-      return draft.agentIdentity;
-    }
-    case 'userIdentity': {
-      return draft.userIdentity;
-    }
-    case 'workStyle': {
-      return draft.workStyle;
-    }
-    case 'workContext': {
-      return draft.workContext;
-    }
-    case 'painPoints': {
-      return draft.painPoints;
-    }
-    case 'responseLanguage': {
-      return draft.responseLanguage;
-    }
-    case 'summary': {
-      return undefined;
-    }
-  }
-};
-
-const extractDraftForNode = (
-  node: UserAgentOnboardingNode,
-  patch: OnboardingPatchInput,
-): Partial<UserAgentOnboardingDraft> | undefined => {
-  const scopedPatch = getScopedPatch(node, patch);
-
-  switch (node) {
-    case 'agentIdentity': {
-      const agentIdentity = normalizeAgentIdentityDraft(scopedPatch);
-      return agentIdentity ? { agentIdentity } : undefined;
-    }
-    case 'userIdentity': {
-      const userIdentity = normalizeUserIdentityDraft(scopedPatch);
-      return userIdentity ? { userIdentity } : undefined;
-    }
-    case 'workStyle': {
-      const workStyle = normalizeWorkStyleDraft(scopedPatch);
-      return workStyle ? { workStyle } : undefined;
-    }
-    case 'workContext': {
-      const workContext = normalizeWorkContextDraft(scopedPatch);
-      return workContext ? { workContext } : undefined;
-    }
-    case 'painPoints': {
-      const painPoints = normalizePainPointsDraft(scopedPatch);
-      return painPoints ? { painPoints } : undefined;
-    }
-    case 'responseLanguage': {
-      const responseLanguage = sanitizeText(asString(patch.responseLanguage));
-      return responseLanguage ? { responseLanguage } : undefined;
-    }
-    case 'summary': {
-      return undefined;
-    }
-  }
-};
-
-const getNodeDraftState = (
-  node: UserAgentOnboardingNode | undefined,
-  draft: UserAgentOnboardingDraft,
-): OnboardingNodeDraftState | undefined => {
-  if (!node || node === 'summary') return undefined;
-
-  const currentDraft = node === 'responseLanguage' ? draft.responseLanguage : draft[node];
-
-  if (typeof currentDraft === 'string') {
-    return currentDraft
-      ? { status: 'complete' }
-      : { missingFields: ['responseLanguage'], status: 'empty' };
-  }
-
-  if (!currentDraft || Object.keys(currentDraft).length === 0) {
-    return {
-      missingFields: [
-        ...(REQUIRED_FIELDS_BY_NODE[node as keyof typeof REQUIRED_FIELDS_BY_NODE] ?? []),
-      ],
-      status: 'empty',
-    };
-  }
-
-  const missingFields = getMissingFields(node, currentDraft as OnboardingPatchInput);
-
-  return {
-    ...(missingFields.length > 0 ? { missingFields } : {}),
-    status: missingFields.length === 0 ? 'complete' : 'partial',
-  };
-};
-
 const buildOnboardingControl = ({
   activeNode,
   activeNodeDraftState,
   currentQuestion,
 }: {
   activeNode?: UserAgentOnboardingNode;
-  activeNodeDraftState?: OnboardingNodeDraftState;
+  activeNodeDraftState?: { missingFields?: string[]; status: 'complete' | 'empty' | 'partial' };
   currentQuestion?: UserAgentOnboardingQuestion;
 }): UserAgentOnboardingControl => {
   const missingFields = activeNodeDraftState?.missingFields ?? [];
@@ -569,7 +159,11 @@ const attachNodeToQuestion = (
 ): UserAgentOnboardingQuestion => ({ ...question, node });
 
 export class OnboardingService {
+  private readonly agentDocumentsService: AgentDocumentsService;
+  private readonly agentModel: AgentModel;
   private readonly agentService: AgentService;
+  private cachedInboxAgentId?: string;
+  private inboxDocumentsInitialized = false;
   private readonly messageModel: MessageModel;
   private readonly topicModel: TopicModel;
   private readonly userId: string;
@@ -580,11 +174,114 @@ export class OnboardingService {
     userId: string,
   ) {
     this.userId = userId;
+    this.agentDocumentsService = new AgentDocumentsService(db, userId);
+    this.agentModel = new AgentModel(db, userId);
     this.agentService = new AgentService(db, userId);
     this.messageModel = new MessageModel(db, userId);
     this.topicModel = new TopicModel(db, userId);
     this.userModel = new UserModel(db, userId);
   }
+
+  private getInboxAgentId = async (): Promise<string> => {
+    if (this.cachedInboxAgentId) return this.cachedInboxAgentId;
+
+    const inboxAgent = await this.agentModel.getBuiltinAgent(BUILTIN_AGENT_SLUGS.inbox);
+
+    if (!inboxAgent?.id) {
+      throw new Error('Inbox agent not found');
+    }
+
+    this.cachedInboxAgentId = inboxAgent.id;
+
+    return inboxAgent.id;
+  };
+
+  private ensureInboxDocuments = async (inboxAgentId: string): Promise<void> => {
+    if (this.inboxDocumentsInitialized) return;
+
+    const existingDocuments = await this.agentDocumentsService.getAgentDocuments(inboxAgentId);
+    const existingFilenames = new Set(existingDocuments.map((document) => document.filename));
+    const templateSet = getDocumentTemplate('claw');
+
+    const missingTemplates = templateSet.templates.filter(
+      (template) => !existingFilenames.has(template.filename),
+    );
+
+    await Promise.all(
+      missingTemplates.map((template) =>
+        this.agentDocumentsService.upsertDocument({
+          agentId: inboxAgentId,
+          content: template.content,
+          filename: template.filename,
+          loadPosition: template.loadPosition,
+          loadRules: template.loadRules,
+          policy: template.policyLoadFormat
+            ? {
+                context: {
+                  policyLoadFormat: template.policyLoadFormat,
+                },
+              }
+            : undefined,
+          templateId: templateSet.id,
+        }),
+      ),
+    );
+
+    this.inboxDocumentsInitialized = true;
+  };
+
+  private upsertInboxDocuments = async (
+    state: UserAgentOnboarding,
+    writeIdentity: boolean,
+  ): Promise<void> => {
+    const inboxAgentId = await this.getInboxAgentId();
+
+    await this.ensureInboxDocuments(inboxAgentId);
+
+    const upserts = [
+      this.agentDocumentsService.upsertDocument({
+        agentId: inboxAgentId,
+        content: buildSoulDocument(state),
+        filename: 'SOUL.md',
+      }),
+    ];
+
+    if (writeIdentity && state.agentIdentity) {
+      upserts.push(
+        this.agentDocumentsService.upsertDocument({
+          agentId: inboxAgentId,
+          content: buildIdentityDocument(state.agentIdentity),
+          filename: 'IDENTITY.md',
+        }),
+      );
+    }
+
+    await Promise.all(upserts);
+  };
+
+  private transferToInbox = async (topicId: string): Promise<void> => {
+    const inboxAgentId = await this.getInboxAgentId();
+    const topic = await this.topicModel.findById(topicId);
+
+    if (!topic || topic.agentId === inboxAgentId) return;
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(topics)
+        .set({ agentId: inboxAgentId, updatedAt: topics.updatedAt })
+        .where(and(eq(topics.id, topicId), eq(topics.userId, this.userId)));
+
+      await tx
+        .update(messages)
+        .set({ agentId: inboxAgentId, updatedAt: messages.updatedAt })
+        .where(and(eq(messages.topicId, topicId), eq(messages.userId, this.userId)));
+
+      await tx
+        .update(threads)
+        .set({ agentId: inboxAgentId, updatedAt: threads.updatedAt })
+        .where(and(eq(threads.topicId, topicId), eq(threads.userId, this.userId)));
+    });
+  };
 
   private ensureState = (state?: UserAgentOnboarding): UserAgentOnboarding => {
     const invalidCompletedNodes = (state?.completedNodes ?? []).filter(
@@ -927,7 +624,26 @@ export class OnboardingService {
       };
     }
 
-    const extractedDraft = extractDraftForNode(activeNode, params.patch);
+    const handler = NODE_HANDLERS[activeNode];
+
+    if (!handler) {
+      const content = `Unknown node "${activeNode}".`;
+
+      return {
+        activeNode,
+        activeNodeDraftState: getNodeDraftState(activeNode, context.draft),
+        content,
+        draft: context.draft,
+        error: {
+          code: 'INVALID_PATCH_SHAPE',
+          message: content,
+        },
+        nextAction: 'ask',
+        success: false,
+      };
+    }
+
+    const extractedDraft = handler.extractDraft(params.patch);
 
     if (!extractedDraft) {
       const content = `Patch for "${activeNode}" did not contain any valid node-scoped fields.`;
@@ -946,8 +662,8 @@ export class OnboardingService {
       };
     }
 
-    const draftValue = getDraftValueForNode(extractedDraft, activeNode);
-    const draft = mergeDraftForNode(context.draft, activeNode, draftValue);
+    const draftValue = handler.getDraftValue(extractedDraft as UserAgentOnboardingDraft);
+    const draft = handler.mergeDraft(context.draft, draftValue);
 
     await this.saveState({ ...(await this.ensurePersistedState()), draft });
 
@@ -962,7 +678,7 @@ export class OnboardingService {
       return {
         activeNode,
         activeNodeDraftState: draftState,
-        committedValue: getDraftValueForNode(draft, activeNode),
+        committedValue: handler.getDraftValue(draft),
         content: commitResult.content,
         control: commitResult.control,
         currentQuestion: commitResult.currentQuestion,
@@ -998,195 +714,76 @@ export class OnboardingService {
   ): Promise<CommitStepResult> => {
     const draft = state.draft ?? {};
 
-    switch (activeNode) {
-      case 'agentIdentity': {
-        const agentIdentity = normalizeAgentIdentity(draft.agentIdentity);
+    if (activeNode === 'summary') {
+      return {
+        content: 'Use finishOnboarding from the summary step.',
+        control: buildOnboardingControl({
+          activeNode,
+          currentQuestion:
+            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
+        }),
+        success: false,
+      };
+    }
 
-        if (!agentIdentity) {
-          return {
-            content: 'Agent identity has not been captured yet.',
-            control: buildOnboardingControl({
-              activeNode,
-              activeNodeDraftState: getNodeDraftState(activeNode, draft),
-              currentQuestion:
-                state.questionSurface?.node === activeNode
-                  ? state.questionSurface.question
-                  : undefined,
-            }),
-            success: false,
-          };
-        }
+    const handler = NODE_HANDLERS[activeNode];
 
-        state.agentIdentity = agentIdentity;
-        break;
-      }
-      case 'userIdentity': {
-        const userIdentity = normalizeUserIdentity(draft.userIdentity);
+    if (!handler) {
+      return {
+        content: `Unknown node "${activeNode}".`,
+        control: buildOnboardingControl({ activeNode }),
+        success: false,
+      };
+    }
 
-        if (!userIdentity) {
-          return {
-            content: 'User identity has not been captured yet.',
-            control: buildOnboardingControl({
-              activeNode,
-              activeNodeDraftState: getNodeDraftState(activeNode, draft),
-              currentQuestion:
-                state.questionSurface?.node === activeNode
-                  ? state.questionSurface.question
-                  : undefined,
-            }),
-            success: false,
-          };
-        }
+    const commitResult = handler.commitToState(state, draft);
 
-        state.profile = {
-          ...state.profile,
-          identity: userIdentity,
-        };
+    if (!commitResult.success) {
+      return {
+        content: commitResult.errorMessage ?? `${activeNode} has not been captured yet.`,
+        control: buildOnboardingControl({
+          activeNode,
+          activeNodeDraftState: getNodeDraftState(activeNode, draft),
+          currentQuestion:
+            state.questionSurface?.node === activeNode ? state.questionSurface.question : undefined,
+        }),
+        success: false,
+      };
+    }
 
-        if (userIdentity.name) {
-          await this.userModel.updateUser({ fullName: userIdentity.name });
-        }
-
-        break;
-      }
-      case 'workStyle': {
-        const workStyle = normalizeWorkStyle(draft.workStyle);
-
-        if (!workStyle) {
-          return {
-            content: 'Work style has not been captured yet.',
-            control: buildOnboardingControl({
-              activeNode,
-              activeNodeDraftState: getNodeDraftState(activeNode, draft),
-              currentQuestion:
-                state.questionSurface?.node === activeNode
-                  ? state.questionSurface.question
-                  : undefined,
-            }),
-            success: false,
-          };
-        }
-
-        state.profile = {
-          ...state.profile,
-          workStyle,
-        };
-        break;
-      }
-      case 'workContext': {
-        const workContext = normalizeWorkContext(draft.workContext);
-
-        if (!workContext) {
-          return {
-            content: 'Work context has not been captured yet.',
-            control: buildOnboardingControl({
-              activeNode,
-              activeNodeDraftState: getNodeDraftState(activeNode, draft),
-              currentQuestion:
-                state.questionSurface?.node === activeNode
-                  ? state.questionSurface.question
-                  : undefined,
-            }),
-            success: false,
-          };
-        }
-
-        state.profile = {
-          ...state.profile,
-          currentFocus:
-            workContext.currentFocus ||
-            workContext.thisWeek ||
-            workContext.thisQuarter ||
-            workContext.summary,
-          interests: workContext.interests,
-          workContext,
-        };
-
-        if (workContext.interests?.length) {
-          await this.userModel.updateUser({ interests: workContext.interests });
-        }
-
-        break;
-      }
-      case 'painPoints': {
-        const painPoints = normalizePainPoints(draft.painPoints);
-
-        if (!painPoints) {
-          return {
-            content: 'Pain points have not been captured yet.',
-            control: buildOnboardingControl({
-              activeNode,
-              activeNodeDraftState: getNodeDraftState(activeNode, draft),
-              currentQuestion:
-                state.questionSurface?.node === activeNode
-                  ? state.questionSurface.question
-                  : undefined,
-            }),
-            success: false,
-          };
-        }
-
-        state.profile = {
-          ...state.profile,
-          painPoints,
-        };
-        break;
-      }
-      case 'responseLanguage': {
-        if (draft.responseLanguage === undefined) {
-          return {
-            content: 'Response language has not been captured yet.',
-            control: buildOnboardingControl({
-              activeNode,
-              activeNodeDraftState: getNodeDraftState(activeNode, draft),
-              currentQuestion:
-                state.questionSurface?.node === activeNode
-                  ? state.questionSurface.question
-                  : undefined,
-            }),
-            success: false,
-          };
-        }
-
-        const currentSettings = await this.userModel.getUserSettings();
-        await this.userModel.updateSetting({
-          general: merge(currentSettings?.general || {}, {
-            responseLanguage: draft.responseLanguage,
-          }),
-        });
-        break;
-      }
-      case 'summary': {
-        return {
-          content: 'Use finishOnboarding from the summary step.',
-          control: buildOnboardingControl({
-            activeNode,
-            currentQuestion:
-              state.questionSurface?.node === activeNode
-                ? state.questionSurface.question
-                : undefined,
-          }),
-          success: false,
-        };
-      }
+    if (commitResult.sideEffects?.updateUserName) {
+      await this.userModel.updateUser({ fullName: commitResult.sideEffects.updateUserName });
+    }
+    if (commitResult.sideEffects?.updateInterests) {
+      await this.userModel.updateUser({ interests: commitResult.sideEffects.updateInterests });
+    }
+    if (commitResult.sideEffects?.updateResponseLanguage) {
+      const currentSettings = await this.userModel.getUserSettings();
+      await this.userModel.updateSetting({
+        general: merge(currentSettings?.general || {}, {
+          responseLanguage: commitResult.sideEffects.updateResponseLanguage,
+        }),
+      });
     }
 
     const nextNode = getNextNode(activeNode);
     const completedNodes = dedupeNodes([...(state.completedNodes ?? []), activeNode]);
     const nextDraft = { ...draft };
-
-    if (activeNode === 'agentIdentity') delete nextDraft.agentIdentity;
-    if (activeNode === 'userIdentity') delete nextDraft.userIdentity;
-    if (activeNode === 'workStyle') delete nextDraft.workStyle;
-    if (activeNode === 'workContext') delete nextDraft.workContext;
-    if (activeNode === 'painPoints') delete nextDraft.painPoints;
-    if (activeNode === 'responseLanguage') delete nextDraft.responseLanguage;
+    delete nextDraft[handler.draftKey as keyof typeof nextDraft];
 
     await this.saveState({
       ...state,
       completedNodes,
       draft: nextDraft,
     });
+
+    if (PROFILE_DOCUMENT_NODES.has(activeNode)) {
+      try {
+        await this.upsertInboxDocuments(state, activeNode === 'agentIdentity');
+      } catch (error) {
+        console.error('[OnboardingService] Failed to upsert inbox documents:', error);
+      }
+    }
 
     const nextContext = await this.getState();
 
@@ -1274,8 +871,29 @@ export class OnboardingService {
     };
   };
 
+  private safeTransferToInbox = async (topicId?: string): Promise<void> => {
+    if (!topicId) return;
+
+    try {
+      await this.transferToInbox(topicId);
+    } catch (error) {
+      console.error('[OnboardingService] Failed to transfer topic to inbox:', error);
+    }
+  };
+
   finishOnboarding = async () => {
     const state = await this.ensurePersistedState();
+
+    if (state.finishedAt) {
+      await this.safeTransferToInbox(state.activeTopicId);
+
+      return {
+        content: 'Agent onboarding already completed.',
+        finishedAt: state.finishedAt,
+        success: true,
+      };
+    }
+
     const activeNode = getActiveNode(state);
 
     if (activeNode !== 'summary') {
@@ -1312,6 +930,8 @@ export class OnboardingService {
       },
     });
 
+    await this.safeTransferToInbox(state.activeTopicId);
+
     return {
       content: 'Agent onboarding completed successfully.',
       finishedAt,
@@ -1323,6 +943,16 @@ export class OnboardingService {
     const state = defaultAgentOnboardingState();
 
     await this.userModel.updateUser({ agentOnboarding: state });
+
+    try {
+      const inboxAgentId = await this.getInboxAgentId();
+
+      await this.agentDocumentsService.deleteTemplateDocuments(inboxAgentId, 'claw');
+      this.inboxDocumentsInitialized = false;
+      await this.ensureInboxDocuments(inboxAgentId);
+    } catch (error) {
+      console.error('[OnboardingService] Failed to reset inbox documents:', error);
+    }
 
     return state;
   };
