@@ -220,6 +220,7 @@
     "@lobechat/builtin-tool-skills": "workspace:*",
     "@lobechat/builtin-tool-tools": "workspace:*",
     "@lobechat/builtin-tool-topic-reference": "workspace:*",
+    "@lobechat/builtin-tool-user-interaction": "workspace:*",
     "@lobechat/builtin-tool-web-browsing": "workspace:*",
     "@lobechat/builtin-tool-web-onboarding": "workspace:*",
     "@lobechat/builtin-tools": "workspace:*",
