@@ -15,32 +15,37 @@ const appendSection = (sections: string[], title: string, content?: string) => {
   sections.push(`## ${title}\n\n${content}`);
 };
 
-export const buildIdentityDocument = (identity: AgentIdentityInput): string => {
+const buildIdentityCoreSection = (identity: AgentIdentityInput): string => {
   const lines = [
-    '# IDENTITY.md - Who Am I?',
+    '## Identity Core',
     '',
     `- **Name:** ${identity.name}`,
+    `- **Avatar:** ${identity.emoji}`,
     `- **Creature:** ${identity.nature}`,
     `- **Vibe:** ${identity.vibe}`,
-    `- **Emoji:** ${identity.emoji}`,
   ];
 
   return lines.join('\n');
 };
 
 export const buildSoulDocument = (
-  state: Pick<UserAgentOnboarding, 'profile' | 'version'>,
+  state: Pick<UserAgentOnboarding, 'agentIdentity' | 'profile' | 'version'>,
 ): string => {
   const profile = state.profile;
+  const identity = state.agentIdentity;
 
-  if (!profile) return SOUL_DOCUMENT.content;
+  if (!profile && !identity) return SOUL_DOCUMENT.content;
 
   const sections: string[] = [];
 
-  appendSection(sections, 'About My Human', profile.identity?.summary);
-  appendSection(sections, 'How We Work Together', profile.workStyle?.summary);
+  if (identity?.name) {
+    sections.push(buildIdentityCoreSection(identity));
+  }
 
-  if (profile.workContext?.summary) {
+  appendSection(sections, 'About My Human', profile?.identity?.summary);
+  appendSection(sections, 'How We Work Together', profile?.workStyle?.summary);
+
+  if (profile?.workContext?.summary) {
     const listItems: string[] = [];
 
     if (profile.workContext.activeProjects?.length) {
@@ -65,7 +70,7 @@ export const buildSoulDocument = (
     );
   }
 
-  appendSection(sections, 'Where I Can Help Most', profile.painPoints?.summary);
+  appendSection(sections, 'Where I Can Help Most', profile?.painPoints?.summary);
 
   if (sections.length === 0) return SOUL_DOCUMENT.content;
 

@@ -24,7 +24,7 @@ import { AgentService } from '@/server/services/agent';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { translation } from '@/server/translation';
 
-import { buildIdentityDocument, buildSoulDocument } from './documentHelpers';
+import { buildSoulDocument } from './documentHelpers';
 import { NODE_HANDLERS, PROFILE_DOCUMENT_NODES } from './nodeHandlers';
 import { getNodeDraftState } from './nodeSchema';
 
@@ -208,13 +208,13 @@ export class OnboardingService {
 
   private upsertInboxDocuments = async (
     state: UserAgentOnboarding,
-    writeIdentity: boolean,
+    syncIdentity: boolean,
   ): Promise<void> => {
     const inboxAgentId = await this.getInboxAgentId();
 
     await this.ensureInboxDocuments(inboxAgentId);
 
-    const upserts = [
+    const tasks: Promise<unknown>[] = [
       this.agentDocumentsService.upsertDocument({
         agentId: inboxAgentId,
         content: buildSoulDocument(state),
@@ -222,17 +222,16 @@ export class OnboardingService {
       }),
     ];
 
-    if (writeIdentity && state.agentIdentity) {
-      upserts.push(
-        this.agentDocumentsService.upsertDocument({
-          agentId: inboxAgentId,
-          content: buildIdentityDocument(state.agentIdentity),
-          filename: 'IDENTITY.md',
+    if (syncIdentity && state.agentIdentity) {
+      tasks.push(
+        this.agentModel.update(inboxAgentId, {
+          avatar: state.agentIdentity.emoji,
+          title: state.agentIdentity.name,
         }),
       );
     }
 
-    await Promise.all(upserts);
+    await Promise.all(tasks);
   };
 
   private transferToInbox = async (topicId: string): Promise<void> => {

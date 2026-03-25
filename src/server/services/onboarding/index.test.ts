@@ -54,6 +54,7 @@ describe('OnboardingService', () => {
   };
   let mockAgentModel: {
     getBuiltinAgent: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
   };
   let mockAgentService: {
     getBuiltinAgent: ReturnType<typeof vi.fn>;
@@ -139,6 +140,7 @@ describe('OnboardingService', () => {
     };
     mockAgentModel = {
       getBuiltinAgent: vi.fn(async () => ({ id: 'inbox-agent-1' })),
+      update: vi.fn(async () => undefined),
     };
     mockAgentDocumentsService = {
       deleteTemplateDocuments: vi.fn(async () => undefined),
@@ -256,15 +258,16 @@ describe('OnboardingService', () => {
     expect(mockAgentDocumentsService.upsertDocument).toHaveBeenCalledWith(
       expect.objectContaining({
         agentId: 'inbox-agent-1',
-        filename: 'IDENTITY.md',
-      }),
-    );
-    expect(mockAgentDocumentsService.upsertDocument).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentId: 'inbox-agent-1',
         filename: 'SOUL.md',
       }),
     );
+    expect(mockAgentDocumentsService.upsertDocument).not.toHaveBeenCalledWith(
+      expect.objectContaining({ filename: 'IDENTITY.md' }),
+    );
+    expect(mockAgentModel.update).toHaveBeenCalledWith('inbox-agent-1', {
+      avatar: '🫖',
+      title: '小七',
+    });
   });
 
   it('stores partial drafts and reports missing required fields', async () => {
@@ -565,7 +568,7 @@ describe('OnboardingService', () => {
       'inbox-agent-1',
       'claw',
     );
-    expect(mockAgentDocumentsService.upsertDocument).toHaveBeenCalledTimes(3);
+    expect(mockAgentDocumentsService.upsertDocument).toHaveBeenCalledTimes(2);
   });
 
   it('creates a new onboarding topic after reset clears the active topic pointer', async () => {
