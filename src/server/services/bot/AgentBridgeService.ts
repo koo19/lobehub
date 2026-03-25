@@ -26,7 +26,6 @@ import {
   renderStopped,
   splitMessage,
 } from './replyTemplate';
-import { startTypingKeepAlive, stopTypingKeepAlive } from './typingKeepAlive';
 
 const log = debug('lobe-server:bot:agent-bridge');
 
@@ -391,9 +390,7 @@ export class AgentBridgeService {
     const queueMode = isQueueAgentRuntimeEnabled();
     let queueHandoffSucceeded = false;
 
-    // Keep typing indicator alive (e.g. Telegram expires after ~5s, Discord after ~10s)
     const platformThreadId = botContext?.platformThreadId ?? thread.id;
-    startTypingKeepAlive(platformThreadId, () => thread.startTyping());
 
     try {
       // executeWithCallback handles progress message (post + edit at each step)
@@ -421,9 +418,8 @@ export class AgentBridgeService {
     } finally {
       AgentBridgeService.activeThreads.delete(thread.id);
       // In queue mode, the callback owns cleanup only after webhook handoff succeeds.
-      // If setup fails before that point, clean up locally to avoid leaked keepalive/reactions.
+      // If setup fails before that point, clean up locally to avoid leaked reactions.
       if (!queueMode || !queueHandoffSucceeded) {
-        stopTypingKeepAlive(platformThreadId);
         await this.removeReceivedReaction(thread, message, client);
       }
     }
@@ -492,9 +488,7 @@ export class AgentBridgeService {
     );
     await thread.startTyping();
 
-    // Keep typing indicator alive
     const platformThreadId = botContext?.platformThreadId ?? thread.id;
-    startTypingKeepAlive(platformThreadId, () => thread.startTyping());
 
     try {
       // executeWithCallback handles progress message (post + edit at each step)
@@ -527,7 +521,6 @@ export class AgentBridgeService {
       AgentBridgeService.activeThreads.delete(thread.id);
       // In queue mode, the callback owns cleanup only after webhook handoff succeeds.
       if (!queueMode || !queueHandoffSucceeded) {
-        stopTypingKeepAlive(platformThreadId);
         await this.removeReceivedReaction(thread, message, opts.client);
       }
     }
