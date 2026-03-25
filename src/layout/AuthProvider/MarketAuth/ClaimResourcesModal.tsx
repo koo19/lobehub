@@ -23,16 +23,16 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
     const { t } = useTranslation('marketAuth');
     const { message } = App.useApp();
 
-    const [selectedMcps, setSelectedMcps] = useState<Set<string>>(() => {
-      return new Set(resources.mcps.map((r) => r.id));
+    const [selectedPlugins, setSelectedPlugins] = useState<Set<string>>(() => {
+      return new Set(resources.plugins.map((r) => String(r.id)));
     });
     const [selectedSkills, setSelectedSkills] = useState<Set<string>>(() => {
-      return new Set(resources.skills.map((r) => r.id));
+      return new Set(resources.skills.map((r) => String(r.id)));
     });
     const [isClaiming, setIsClaiming] = useState(false);
 
-    const toggleMcp = useCallback((id: string) => {
-      setSelectedMcps((prev) => {
+    const togglePlugin = useCallback((id: string) => {
+      setSelectedPlugins((prev) => {
         const next = new Set(prev);
         if (next.has(id)) {
           next.delete(id);
@@ -56,10 +56,10 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
     }, []);
 
     const handleClaim = useCallback(async () => {
-      const mcpIds = [...selectedMcps];
+      const pluginIds = [...selectedPlugins];
       const skillIds = [...selectedSkills];
 
-      if (mcpIds.length === 0 && skillIds.length === 0) {
+      if (pluginIds.length === 0 && skillIds.length === 0) {
         onClose();
         return;
       }
@@ -67,11 +67,11 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
       setIsClaiming(true);
       try {
         await lambdaClient.market.socialProfile.claimResources.mutate({
-          mcpIds,
+          pluginIds,
           skillIds,
         });
 
-        const totalClaimed = mcpIds.length + skillIds.length;
+        const totalClaimed = pluginIds.length + skillIds.length;
         message.success(
           t('claimResources.success', {
             count: totalClaimed,
@@ -90,37 +90,42 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
       } finally {
         setIsClaiming(false);
       }
-    }, [selectedMcps, selectedSkills, message, t, onSuccess, onClose]);
+    }, [selectedPlugins, selectedSkills, message, t, onSuccess, onClose]);
 
-    const totalSelected = selectedMcps.size + selectedSkills.size;
+    const totalSelected = selectedPlugins.size + selectedSkills.size;
 
     const renderItem = (
       item: ClaimableResource,
       selected: boolean,
       onToggle: () => void,
       icon: React.ReactNode,
-    ) => (
-      <List.Item
-        style={{
-          cursor: 'pointer',
-          padding: '8px 12px',
-        }}
-        onClick={onToggle}
-      >
-        <Flexbox horizontal align="center" gap={12} style={{ width: '100%' }}>
-          <Checkbox checked={selected} />
-          {icon}
-          <Flexbox flex={1} gap={2}>
-            <Text style={{ fontSize: 14 }}>{item.name}</Text>
-            {item.description && (
-              <Text style={{ fontSize: 12 }} type="secondary">
-                {item.description}
-              </Text>
-            )}
+    ) => {
+      // Use name, or fallback to parsedUrl.fullName, or identifier
+      const displayName = item.name || item.parsedUrl?.fullName || item.identifier;
+
+      return (
+        <List.Item
+          style={{
+            cursor: 'pointer',
+            padding: '8px 12px',
+          }}
+          onClick={onToggle}
+        >
+          <Flexbox horizontal align="center" gap={12} style={{ width: '100%' }}>
+            <Checkbox checked={selected} />
+            {icon}
+            <Flexbox flex={1} gap={2}>
+              <Text style={{ fontSize: 14 }}>{displayName}</Text>
+              {item.description && (
+                <Text style={{ fontSize: 12 }} type="secondary">
+                  {item.description}
+                </Text>
+              )}
+            </Flexbox>
           </Flexbox>
-        </Flexbox>
-      </List.Item>
-    );
+        </List.Item>
+      );
+    };
 
     return (
       <Modal
@@ -134,7 +139,7 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
         onCancel={onClose}
         onOk={handleClaim}
       >
-        <Text strong fontSize={20} style={{ display: 'block', marginBottom: 8 }}>
+        <Text strong fontSize={20} style={{ display: 'block', marginBottom: 8, marginTop: 16 }}>
           {t('claimResources.title', { defaultValue: 'Claim Your Resources' })}
         </Text>
         <Text style={{ display: 'block', marginBottom: 16 }} type="secondary">
@@ -143,21 +148,21 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
           })}
         </Text>
 
-        {resources.mcps.length > 0 && (
+        {resources.plugins.length > 0 && (
           <Flexbox gap={8} style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 13 }} type="secondary">
-              {t('claimResources.mcpSection', { defaultValue: 'MCP Servers' })}
+              {t('claimResources.pluginSection', { defaultValue: 'Plugins' })}
             </Text>
             <List
               bordered
-              dataSource={resources.mcps}
+              dataSource={resources.plugins}
               size="small"
               style={{ borderRadius: cssVar.borderRadiusLG }}
               renderItem={(item) =>
                 renderItem(
                   item,
-                  selectedMcps.has(item.id),
-                  () => toggleMcp(item.id),
+                  selectedPlugins.has(String(item.id)),
+                  () => togglePlugin(String(item.id)),
                   <Package size={18} style={{ color: cssVar.colorTextSecondary }} />,
                 )
               }
@@ -178,8 +183,8 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
               renderItem={(item) =>
                 renderItem(
                   item,
-                  selectedSkills.has(item.id),
-                  () => toggleSkill(item.id),
+                  selectedSkills.has(String(item.id)),
+                  () => toggleSkill(String(item.id)),
                   <Wrench size={18} style={{ color: cssVar.colorTextSecondary }} />,
                 )
               }

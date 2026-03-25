@@ -18,7 +18,6 @@ import { serverConfigSelectors } from '@/store/serverConfig/selectors';
 import { useUserStore } from '@/store/user';
 import { userProfileSelectors } from '@/store/user/selectors';
 
-import ClaimResourcesModal from './ClaimResourcesModal';
 import SocialConnectButton from './SocialConnectButton';
 import { type MarketUserProfile } from './types';
 import useSocialConnect, { type ClaimableResources } from './useSocialConnect';
@@ -36,6 +35,10 @@ interface ProfileSetupModalProps {
    */
   isFirstTimeSetup?: boolean;
   onClose: () => void;
+  /**
+   * Callback to show claim resources modal (managed by parent)
+   */
+  onShowClaimResources?: (resources: ClaimableResources) => void;
   /**
    * Callback when profile is successfully updated
    */
@@ -58,6 +61,7 @@ const ProfileSetupModal = memo<ProfileSetupModalProps>(
   ({
     open,
     onClose,
+    onShowClaimResources,
     onSuccess,
     accessToken,
     defaultDisplayName,
@@ -86,18 +90,19 @@ const ProfileSetupModal = memo<ProfileSetupModalProps>(
     const [bannerUrl, setBannerUrl] = useState<string | null>(null);
     const [bannerUploading, setBannerUploading] = useState(false);
 
-    // Claim resources modal state
-    const [claimableResources, setClaimableResources] = useState<ClaimableResources | null>(null);
-    const [showClaimModal, setShowClaimModal] = useState(false);
+    // Social profiles loading state
+    const [isLoadingSocialProfiles, setIsLoadingSocialProfiles] = useState(false);
 
     // File upload
     const uploadWithProgress = useFileStore((s) => s.uploadWithProgress);
 
     // Social connect hooks
-    const handleClaimableResourcesFound = useCallback((resources: ClaimableResources) => {
-      setClaimableResources(resources);
-      setShowClaimModal(true);
-    }, []);
+    const handleClaimableResourcesFound = useCallback(
+      (resources: ClaimableResources) => {
+        onShowClaimResources?.(resources);
+      },
+      [onShowClaimResources],
+    );
 
     const githubConnect = useSocialConnect({
       onClaimableResourcesFound: handleClaimableResourcesFound,
@@ -112,10 +117,17 @@ const ProfileSetupModal = memo<ProfileSetupModalProps>(
     // Fetch social profiles when modal opens
     useEffect(() => {
       if (open && !isFirstTimeSetup) {
-        githubConnect.fetchProfile();
-        twitterConnect.fetchProfile();
+        const fetchProfiles = async () => {
+          setIsLoadingSocialProfiles(true);
+          try {
+            await Promise.all([githubConnect.fetchProfile(), twitterConnect.fetchProfile()]);
+          } finally {
+            setIsLoadingSocialProfiles(false);
+          }
+        };
+        fetchProfiles();
       }
-    }, [open, isFirstTimeSetup]);
+    }, [open, isFirstTimeSetup, githubConnect.fetchProfile, twitterConnect.fetchProfile]);
 
     // Reset form when modal opens
     useEffect(() => {
@@ -259,6 +271,25 @@ const ProfileSetupModal = memo<ProfileSetupModalProps>(
           type: result.user?.type || null,
           userName: values.userName || null,
         };
+
+        // Check for claimable resources after saving (if GitHub is connected)
+        if (githubConnect.profile) {
+          try {
+            const claimResult =
+              await lambdaClient.market.socialProfile.scanClaimableResources.query();
+            if (claimResult.plugins.length > 0 || claimResult.skills.length > 0) {
+              // Close profile modal first, then show claim modal via parent callback
+              onSuccess?.(userProfile);
+              onClose();
+              // Trigger claim modal in parent (MarketAuthProvider)
+              onShowClaimResources?.(claimResult);
+              return;
+            }
+          } catch (err) {
+            console.error('[ProfileSetupModal] Failed to scan claimable resources:', err);
+          }
+        }
+
         onSuccess?.(userProfile);
         onClose();
       } catch (error) {
@@ -288,6 +319,7 @@ const ProfileSetupModal = memo<ProfileSetupModalProps>(
       twitterConnect.profile,
       message,
       onClose,
+      onShowClaimResources,
       onSuccess,
       t,
     ]);
@@ -326,278 +358,266 @@ const ProfileSetupModal = memo<ProfileSetupModalProps>(
     }, [isFirstTimeSetup, onClose]);
 
     return (
-      <>
-        <Modal
-          centered
-          cancelButtonProps={isFirstTimeSetup ? { style: { display: 'none' } } : undefined}
-          cancelText={t('profileSetup.cancel')}
-          closable={!isFirstTimeSetup}
-          confirmLoading={loading}
-          keyboard={!isFirstTimeSetup}
-          maskClosable={!isFirstTimeSetup}
-          okText={isFirstTimeSetup ? t('profileSetup.getStarted') : t('profileSetup.save')}
-          open={open}
-          title={false}
-          width={640}
-          onCancel={handleCancel}
-          onOk={handleSubmit}
-        >
-          <Text strong fontSize={20} style={{ marginTop: 16 }}>
-            {isFirstTimeSetup ? t('profileSetup.titleFirstTime') : t('profileSetup.titleEdit')}
-          </Text>
-          <Text style={{ display: 'block', marginBottom: 24 }} type="secondary">
-            {isFirstTimeSetup
-              ? t('profileSetup.descriptionFirstTime')
-              : t('profileSetup.descriptionEdit')}
-          </Text>
+      <Modal
+        centered
+        cancelButtonProps={isFirstTimeSetup ? { style: { display: 'none' } } : undefined}
+        cancelText={t('profileSetup.cancel')}
+        closable={!isFirstTimeSetup}
+        confirmLoading={loading}
+        keyboard={!isFirstTimeSetup}
+        maskClosable={!isFirstTimeSetup}
+        okText={isFirstTimeSetup ? t('profileSetup.getStarted') : t('profileSetup.save')}
+        open={open}
+        title={false}
+        width={640}
+        onCancel={handleCancel}
+        onOk={handleSubmit}
+      >
+        <Text strong fontSize={20} style={{ marginTop: 16 }}>
+          {isFirstTimeSetup ? t('profileSetup.titleFirstTime') : t('profileSetup.titleEdit')}
+        </Text>
+        <Text style={{ display: 'block', marginBottom: 24 }} type="secondary">
+          {isFirstTimeSetup
+            ? t('profileSetup.descriptionFirstTime')
+            : t('profileSetup.descriptionEdit')}
+        </Text>
 
-          <Form form={form} layout="vertical">
-            <Flexbox horizontal gap={24}>
-              <Flexbox flex={1}>
-                <Form.Item
-                  label={t('profileSetup.fields.displayName.label')}
-                  name="displayName"
-                  rules={[
-                    { message: t('profileSetup.fields.displayName.required'), required: true },
-                    {
-                      max: 50,
-                      message: t('profileSetup.fields.displayName.maxLength'),
-                    },
-                  ]}
-                >
-                  <Input
-                    showCount
-                    maxLength={50}
-                    placeholder={t('profileSetup.fields.displayName.placeholder')}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="userName"
-                  label={
-                    <Flexbox horizontal align="center" gap={4}>
-                      {t('profileSetup.fields.userName.label')}
-                      <Tooltip title={t('profileSetup.fields.userName.tooltip')}>
-                        <CircleHelp size={14} style={{ cursor: 'help', opacity: 0.5 }} />
-                      </Tooltip>
-                    </Flexbox>
-                  }
-                  rules={[
-                    { message: t('profileSetup.fields.userName.required'), required: true },
-                    {
-                      message: t('profileSetup.fields.userName.pattern'),
-                      pattern: /^[\w-]+$/,
-                    },
-                    {
-                      max: 32,
-                      message: t('profileSetup.fields.userName.maxLength'),
-                    },
-                    {
-                      message: t('profileSetup.fields.userName.minLength'),
-                      min: 3,
-                    },
-                  ]}
-                >
-                  <Input
-                    showCount
-                    maxLength={32}
-                    placeholder={t('profileSetup.fields.userName.placeholder')}
-                    prefix="@"
-                  />
-                </Form.Item>
-              </Flexbox>
-              {/* Avatar Section */}
-              <Form.Item>
-                <EmojiPicker
-                  allowDelete={!!avatarUrl}
-                  loading={avatarUploading}
-                  locale={locale}
-                  shape="square"
-                  size={80}
-                  value={avatarUrl || undefined}
-                  allowUpload={{
-                    enableEmoji: false,
-                  }}
-                  onChange={handleAvatarChange}
-                  onDelete={handleAvatarDelete}
-                  onUpload={handleAvatarUpload}
+        <Form form={form} layout="vertical">
+          <Flexbox horizontal gap={24}>
+            <Flexbox flex={1}>
+              <Form.Item
+                label={t('profileSetup.fields.displayName.label')}
+                name="displayName"
+                rules={[
+                  { message: t('profileSetup.fields.displayName.required'), required: true },
+                  {
+                    max: 50,
+                    message: t('profileSetup.fields.displayName.maxLength'),
+                  },
+                ]}
+              >
+                <Input
+                  showCount
+                  maxLength={50}
+                  placeholder={t('profileSetup.fields.displayName.placeholder')}
+                />
+              </Form.Item>
+              <Form.Item
+                name="userName"
+                label={
+                  <Flexbox horizontal align="center" gap={4}>
+                    {t('profileSetup.fields.userName.label')}
+                    <Tooltip title={t('profileSetup.fields.userName.tooltip')}>
+                      <CircleHelp size={14} style={{ cursor: 'help', opacity: 0.5 }} />
+                    </Tooltip>
+                  </Flexbox>
+                }
+                rules={[
+                  { message: t('profileSetup.fields.userName.required'), required: true },
+                  {
+                    message: t('profileSetup.fields.userName.pattern'),
+                    pattern: /^[\w-]+$/,
+                  },
+                  {
+                    max: 32,
+                    message: t('profileSetup.fields.userName.maxLength'),
+                  },
+                  {
+                    message: t('profileSetup.fields.userName.minLength'),
+                    min: 3,
+                  },
+                ]}
+              >
+                <Input
+                  showCount
+                  maxLength={32}
+                  placeholder={t('profileSetup.fields.userName.placeholder')}
+                  prefix="@"
                 />
               </Form.Item>
             </Flexbox>
-            <Form.Item
-              label={t('profileSetup.fields.description.label')}
-              name="description"
-              rules={[
-                {
-                  max: 200,
-                  message: t('profileSetup.fields.description.maxLength'),
-                },
-              ]}
-            >
-              <TextArea
-                showCount
-                maxLength={200}
-                placeholder={t('profileSetup.fields.description.placeholder')}
-                rows={3}
+            {/* Avatar Section */}
+            <Form.Item>
+              <EmojiPicker
+                allowDelete={!!avatarUrl}
+                loading={avatarUploading}
+                locale={locale}
+                shape="square"
+                size={80}
+                value={avatarUrl || undefined}
+                allowUpload={{
+                  enableEmoji: false,
+                }}
+                onChange={handleAvatarChange}
+                onDelete={handleAvatarDelete}
+                onUpload={handleAvatarUpload}
               />
             </Form.Item>
+          </Flexbox>
+          <Form.Item
+            label={t('profileSetup.fields.description.label')}
+            name="description"
+            rules={[
+              {
+                max: 200,
+                message: t('profileSetup.fields.description.maxLength'),
+              },
+            ]}
+          >
+            <TextArea
+              showCount
+              maxLength={200}
+              placeholder={t('profileSetup.fields.description.placeholder')}
+              rows={3}
+            />
+          </Form.Item>
 
-            {/* Only show banner and social links in edit mode, not first-time setup */}
-            {!isFirstTimeSetup && (
-              <>
-                {/* Banner Upload Section */}
-                <Form.Item
-                  label={
-                    <Flexbox horizontal align="center" gap={4}>
-                      {t('profileSetup.fields.bannerUrl.label')}
-                      <Tooltip title={t('profileSetup.fields.bannerUrl.tooltip')}>
-                        <CircleHelp size={14} style={{ cursor: 'help', opacity: 0.5 }} />
-                      </Tooltip>
-                    </Flexbox>
-                  }
-                >
-                  <Flexbox gap={8} width="100%">
-                    <Upload
-                      accept="image/*"
-                      customRequest={handleBannerUpload}
-                      maxCount={1}
-                      showUploadList={false}
-                      style={{ display: 'block', width: '100%' }}
+          {/* Only show banner and social links in edit mode, not first-time setup */}
+          {!isFirstTimeSetup && (
+            <>
+              {/* Banner Upload Section */}
+              <Form.Item
+                label={
+                  <Flexbox horizontal align="center" gap={4}>
+                    {t('profileSetup.fields.bannerUrl.label')}
+                    <Tooltip title={t('profileSetup.fields.bannerUrl.tooltip')}>
+                      <CircleHelp size={14} style={{ cursor: 'help', opacity: 0.5 }} />
+                    </Tooltip>
+                  </Flexbox>
+                }
+              >
+                <Flexbox gap={8} width="100%">
+                  <Upload
+                    accept="image/*"
+                    customRequest={handleBannerUpload}
+                    maxCount={1}
+                    showUploadList={false}
+                    style={{ display: 'block', width: '100%' }}
+                  >
+                    <div
+                      style={{
+                        backgroundColor: bannerUrl ? undefined : cssVar.colorFillTertiary,
+                        backgroundImage: bannerUrl ? `url(${bannerUrl})` : undefined,
+                        backgroundPosition: 'center',
+                        backgroundSize: 'cover',
+                        borderRadius: cssVar.borderRadiusLG,
+                        cursor: 'pointer',
+                        height: 120,
+                        overflow: 'hidden',
+                        position: 'relative',
+                        width: '100%',
+                      }}
                     >
-                      <div
+                      <Center
                         style={{
-                          backgroundColor: bannerUrl ? undefined : cssVar.colorFillTertiary,
-                          backgroundImage: bannerUrl ? `url(${bannerUrl})` : undefined,
-                          backgroundPosition: 'center',
-                          backgroundSize: 'cover',
-                          borderRadius: cssVar.borderRadiusLG,
-                          cursor: 'pointer',
-                          height: 120,
-                          overflow: 'hidden',
-                          position: 'relative',
+                          background: bannerUrl ? 'rgba(0,0,0,0.4)' : 'transparent',
+                          height: '100%',
+                          opacity: bannerUrl ? 0 : 1,
+                          transition: 'opacity 0.2s',
                           width: '100%',
                         }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.opacity = '1';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (bannerUrl) e.currentTarget.style.opacity = '0';
+                        }}
                       >
-                        <Center
-                          style={{
-                            background: bannerUrl ? 'rgba(0,0,0,0.4)' : 'transparent',
-                            height: '100%',
-                            opacity: bannerUrl ? 0 : 1,
-                            transition: 'opacity 0.2s',
-                            width: '100%',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.opacity = '1';
-                          }}
-                          onMouseLeave={(e) => {
-                            if (bannerUrl) e.currentTarget.style.opacity = '0';
-                          }}
-                        >
-                          <Flexbox align="center" gap={8}>
-                            <ImagePlus
-                              size={24}
-                              style={{ color: bannerUrl ? '#fff' : cssVar.colorTextSecondary }}
-                            />
-                            <Text
-                              style={{
-                                color: bannerUrl ? '#fff' : cssVar.colorTextSecondary,
-                                fontSize: 12,
-                              }}
-                            >
-                              {bannerUploading
-                                ? t('profileSetup.fields.bannerUrl.uploading')
-                                : t('profileSetup.fields.bannerUrl.clickToUpload')}
-                            </Text>
-                          </Flexbox>
-                        </Center>
-                      </div>
-                    </Upload>
-                    {bannerUrl && (
-                      <Flexbox horizontal align="center" gap={8} justify="flex-end">
-                        <Text
-                          style={{
-                            color: cssVar.colorError,
-                            cursor: 'pointer',
-                            fontSize: 12,
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleBannerDelete();
-                          }}
-                        >
-                          <Flexbox horizontal align="center" gap={4}>
-                            <Trash2 size={12} />
-                            {t('profileSetup.fields.bannerUrl.remove')}
-                          </Flexbox>
-                        </Text>
-                      </Flexbox>
-                    )}
-                  </Flexbox>
-                </Form.Item>
-
-                <Text style={{ display: 'block', marginBottom: 12 }} type="secondary">
-                  {t('profileSetup.socialLinks.title')}
-                </Text>
-
-                {/* GitHub OAuth Connect Button */}
-                <Flexbox gap={12} style={{ marginBottom: 16 }}>
-                  <SocialConnectButton
-                    isConnecting={githubConnect.isConnecting}
-                    isDisconnecting={githubConnect.isDisconnecting}
-                    profile={githubConnect.profile}
-                    provider="github"
-                    onConnect={githubConnect.connect}
-                    onDisconnect={githubConnect.disconnect}
-                  />
-
-                  {/* Twitter OAuth Connect Button */}
-                  <SocialConnectButton
-                    isConnecting={twitterConnect.isConnecting}
-                    isDisconnecting={twitterConnect.isDisconnecting}
-                    profile={twitterConnect.profile}
-                    provider="twitter"
-                    onConnect={twitterConnect.connect}
-                    onDisconnect={twitterConnect.disconnect}
-                  />
+                        <Flexbox align="center" gap={8}>
+                          <ImagePlus
+                            size={24}
+                            style={{ color: bannerUrl ? '#fff' : cssVar.colorTextSecondary }}
+                          />
+                          <Text
+                            style={{
+                              color: bannerUrl ? '#fff' : cssVar.colorTextSecondary,
+                              fontSize: 12,
+                            }}
+                          >
+                            {bannerUploading
+                              ? t('profileSetup.fields.bannerUrl.uploading')
+                              : t('profileSetup.fields.bannerUrl.clickToUpload')}
+                          </Text>
+                        </Flexbox>
+                      </Center>
+                    </div>
+                  </Upload>
+                  {bannerUrl && (
+                    <Flexbox horizontal align="center" gap={8} justify="flex-end">
+                      <Text
+                        style={{
+                          color: cssVar.colorError,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBannerDelete();
+                        }}
+                      >
+                        <Flexbox horizontal align="center" gap={4}>
+                          <Trash2 size={12} />
+                          {t('profileSetup.fields.bannerUrl.remove')}
+                        </Flexbox>
+                      </Text>
+                    </Flexbox>
+                  )}
                 </Flexbox>
+              </Form.Item>
 
-                {/* Website - Manual Input */}
-                <Form.Item
-                  name="website"
-                  rules={[
-                    {
-                      message: t('profileSetup.fields.website.invalidUrl'),
-                      type: 'url',
-                    },
-                  ]}
-                >
-                  <Input
-                    placeholder={t('profileSetup.fields.website.placeholder')}
-                    prefix={
-                      <Icon
-                        color={cssVar.colorTextSecondary}
-                        icon={Globe}
-                        style={{ marginRight: 8 }}
-                      />
-                    }
-                  />
-                </Form.Item>
-              </>
-            )}
-          </Form>
-        </Modal>
+              <Text style={{ display: 'block', marginBottom: 12 }} type="secondary">
+                {t('profileSetup.socialLinks.title')}
+              </Text>
 
-        {/* Claim Resources Modal */}
-        {claimableResources && (
-          <ClaimResourcesModal
-            open={showClaimModal}
-            resources={claimableResources}
-            onClose={() => setShowClaimModal(false)}
-            onSuccess={() => {
-              setClaimableResources(null);
-            }}
-          />
-        )}
-      </>
+              {/* GitHub OAuth Connect Button */}
+              <Flexbox gap={12} style={{ marginBottom: 16 }}>
+                <SocialConnectButton
+                  disabled={isLoadingSocialProfiles}
+                  isConnecting={githubConnect.isConnecting}
+                  isDisconnecting={githubConnect.isDisconnecting}
+                  profile={githubConnect.profile}
+                  provider="github"
+                  onConnect={githubConnect.connect}
+                  onDisconnect={githubConnect.disconnect}
+                />
+
+                {/* Twitter OAuth Connect Button */}
+                <SocialConnectButton
+                  disabled={isLoadingSocialProfiles}
+                  isConnecting={twitterConnect.isConnecting}
+                  isDisconnecting={twitterConnect.isDisconnecting}
+                  profile={twitterConnect.profile}
+                  provider="twitter"
+                  onConnect={twitterConnect.connect}
+                  onDisconnect={twitterConnect.disconnect}
+                />
+              </Flexbox>
+
+              {/* Website - Manual Input */}
+              <Form.Item
+                name="website"
+                rules={[
+                  {
+                    message: t('profileSetup.fields.website.invalidUrl'),
+                    type: 'url',
+                  },
+                ]}
+              >
+                <Input
+                  placeholder={t('profileSetup.fields.website.placeholder')}
+                  prefix={
+                    <Icon
+                      color={cssVar.colorTextSecondary}
+                      icon={Globe}
+                      style={{ marginRight: 8 }}
+                    />
+                  }
+                />
+              </Form.Item>
+            </>
+          )}
+        </Form>
+      </Modal>
     );
   },
 );

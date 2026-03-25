@@ -17,25 +17,32 @@ const socialProfileAuthProcedure = authedProcedure
 
 export interface ClaimableResource {
   description?: string;
-  id: string;
+  id: number;
   identifier: string;
-  name: string;
-  type: 'mcp' | 'skill';
+  name?: string;
+  parsedUrl?: {
+    fullName: string;
+    owner: string;
+    repo: string;
+  };
+  type: 'plugin' | 'skill';
+  url?: string;
 }
 
 export interface ClaimableResources {
-  mcps: ClaimableResource[];
+  plugins: ClaimableResource[];
   skills: ClaimableResource[];
 }
 
 export const socialProfileRouter = router({
   /**
-   * Claim resources (MCPs and/or Skills)
+   * Claim resources (Plugins and/or Skills)
+   * API expects one asset at a time: { assetId: number, assetType: 'skill' | 'plugin' }
    */
   claimResources: socialProfileAuthProcedure
     .input(
       z.object({
-        mcpIds: z.array(z.string()).optional(),
+        pluginIds: z.array(z.string()).optional(),
         skillIds: z.array(z.string()).optional(),
       }),
     )
@@ -43,29 +50,73 @@ export const socialProfileRouter = router({
       log('claimResources input: %O', input);
 
       try {
+        // @ts-ignore - headers is protected but we need it for custom API calls
         const headers = ctx.marketSDK.headers as Record<string, string>;
 
-        const response = await fetch(`${MARKET_BASE_URL}/api/v1/user/claims`, {
-          body: JSON.stringify({
-            mcpIds: input.mcpIds || [],
-            skillIds: input.skillIds || [],
-          }),
-          headers: {
-            ...headers,
-            'Content-Type': 'application/json',
-          },
-          method: 'POST',
-        });
+        const claimed: Array<{ assetId: number; assetType: string }> = [];
+        const errors: string[] = [];
 
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
-          throw new Error(error.message || `Failed to claim resources: ${response.status}`);
+        // Claim each skill one by one
+        for (const skillId of input.skillIds || []) {
+          try {
+            const response = await fetch(`${MARKET_BASE_URL}/api/v1/user/claims`, {
+              body: JSON.stringify({
+                assetId: Number(skillId),
+                assetType: 'skill',
+              }),
+              headers: {
+                ...headers,
+                'Content-Type': 'application/json',
+              },
+              method: 'POST',
+            });
+
+            if (response.ok) {
+              claimed.push({ assetId: Number(skillId), assetType: 'skill' });
+            } else {
+              const error = await response.json().catch(() => ({}));
+              errors.push(error.error || `Failed to claim skill ${skillId}`);
+            }
+          } catch (err) {
+            errors.push(`Failed to claim skill ${skillId}`);
+          }
         }
 
-        const data = await response.json();
+        // Claim each plugin one by one
+        for (const pluginId of input.pluginIds || []) {
+          try {
+            const response = await fetch(`${MARKET_BASE_URL}/api/v1/user/claims`, {
+              body: JSON.stringify({
+                assetId: Number(pluginId),
+                assetType: 'plugin',
+              }),
+              headers: {
+                ...headers,
+                'Content-Type': 'application/json',
+              },
+              method: 'POST',
+            });
+
+            if (response.ok) {
+              claimed.push({ assetId: Number(pluginId), assetType: 'plugin' });
+            } else {
+              const error = await response.json().catch(() => ({}));
+              errors.push(error.error || `Failed to claim plugin ${pluginId}`);
+            }
+          } catch (err) {
+            errors.push(`Failed to claim plugin ${pluginId}`);
+          }
+        }
+
+        // If nothing was claimed and there were errors, throw
+        if (claimed.length === 0 && errors.length > 0) {
+          throw new Error(errors[0]);
+        }
+
         return {
-          claimed: data.claimed || [],
-          success: true,
+          claimed,
+          errors: errors.length > 0 ? errors : undefined,
+          success: claimed.length > 0,
         };
       } catch (error) {
         log('Error claiming resources: %O', error);
@@ -84,6 +135,7 @@ export const socialProfileRouter = router({
     log('scanClaimableResources');
 
     try {
+      // @ts-ignore - headers is protected but we need it for custom API calls
       const headers = ctx.marketSDK.headers as Record<string, string>;
 
       const response = await fetch(`${MARKET_BASE_URL}/api/v1/user/claims/scan`, {
@@ -92,17 +144,27 @@ export const socialProfileRouter = router({
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || `Failed to scan claimable resources: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          errorData.error || `Failed to scan claimable resources: ${response.status}`;
+        throw new TRPCError({
+          code: response.status === 400 ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
+          message: errorMessage,
+        });
       }
 
-      const data = await response.json();
+      const responseData = await response.json();
+      // API returns { data: { plugins: [], skills: [] } }
+      const data = responseData.data || responseData;
       return {
-        mcps: (data.mcps || []) as ClaimableResource[],
+        plugins: (data.plugins || []) as ClaimableResource[],
         skills: (data.skills || []) as ClaimableResource[],
       };
     } catch (error) {
       log('Error scanning claimable resources: %O', error);
+      if (error instanceof TRPCError) {
+        throw error;
+      }
       throw new TRPCError({
         cause: error,
         code: 'INTERNAL_SERVER_ERROR',
@@ -110,6 +172,66 @@ export const socialProfileRouter = router({
       });
     }
   }),
+
+  /**
+   * Submit a GitHub repository URL for import
+   */
+  submitRepo: socialProfileAuthProcedure
+    .input(
+      z.object({
+        branch: z.string().optional(),
+        gitUrl: z.string().url(),
+        type: z.enum(['skill', 'plugin']).default('skill'),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      log('submitRepo input: %O', input);
+
+      try {
+        // @ts-ignore - headers is protected but we need it for custom API calls
+        const headers = ctx.marketSDK.headers as Record<string, string>;
+
+        const response = await fetch(`${MARKET_BASE_URL}/api/v1/user/claims/submit-repo`, {
+          body: JSON.stringify({
+            branch: input.branch,
+            gitUrl: input.gitUrl,
+            type: input.type,
+          }),
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+          },
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMessage = errorData.error || `Failed to submit repository: ${response.status}`;
+          // Use BAD_REQUEST for 400 errors (user input errors)
+          throw new TRPCError({
+            code: response.status === 400 ? 'BAD_REQUEST' : 'INTERNAL_SERVER_ERROR',
+            message: errorMessage,
+          });
+        }
+
+        const data = await response.json();
+        return {
+          message: data.message,
+          success: true,
+        };
+      } catch (error) {
+        log('Error submitting repository: %O', error);
+        // Re-throw TRPCError as-is
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          cause: error,
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to submit repository',
+        });
+      }
+    }),
 });
 
 export type SocialProfileRouter = typeof socialProfileRouter;

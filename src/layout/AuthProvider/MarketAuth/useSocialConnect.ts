@@ -20,14 +20,20 @@ export interface SocialProfile {
 
 export interface ClaimableResource {
   description?: string;
-  id: string;
+  id: number;
   identifier: string;
-  name: string;
-  type: 'mcp' | 'skill';
+  name?: string;
+  parsedUrl?: {
+    fullName: string;
+    owner: string;
+    repo: string;
+  };
+  type: 'plugin' | 'skill';
+  url?: string;
 }
 
 export interface ClaimableResources {
-  mcps: ClaimableResource[];
+  plugins: ClaimableResource[];
   skills: ClaimableResource[];
 }
 
@@ -105,13 +111,13 @@ export const useSocialConnect = ({
   const checkClaimableResources = useCallback(async () => {
     try {
       const result = await lambdaClient.market.socialProfile.scanClaimableResources.query();
-      if (result.mcps.length > 0 || result.skills.length > 0) {
+      if (result.plugins.length > 0 || result.skills.length > 0) {
         onClaimableResourcesFound?.(result);
       }
       return result;
     } catch (err) {
       console.error('[SocialConnect] Failed to scan claimable resources:', err);
-      return { mcps: [], skills: [] };
+      return { plugins: [], skills: [] };
     }
   }, [onClaimableResourcesFound]);
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { SiGithub, SiX } from '@icons-pack/react-simple-icons';
-import { ActionIcon, Flexbox, Icon, Text, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Flexbox, Text, Tooltip } from '@lobehub/ui';
 import { Button, Spin } from 'antd';
 import { cssVar } from 'antd-style';
 import { ArrowRight, Link2Off, Loader2 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { type SocialProfile, type SocialProvider } from './useSocialConnect';
 
 interface SocialConnectButtonProps {
+  disabled?: boolean;
   isConnecting?: boolean;
   isDisconnecting?: boolean;
   onConnect: () => void;
@@ -30,12 +31,13 @@ const providerNames: Record<SocialProvider, string> = {
 };
 
 export const SocialConnectButton = memo<SocialConnectButtonProps>(
-  ({ provider, profile, isConnecting, isDisconnecting, onConnect, onDisconnect }) => {
+  ({ provider, profile, isConnecting, isDisconnecting, disabled, onConnect, onDisconnect }) => {
     const { t } = useTranslation('marketAuth');
     const ProviderIcon = providerIcons[provider];
     const providerName = providerNames[provider];
 
     const isLoading = isConnecting || isDisconnecting;
+    const isDisabled = isLoading || disabled;
 
     if (profile) {
       // Connected state
@@ -52,7 +54,7 @@ export const SocialConnectButton = memo<SocialConnectButtonProps>(
           }}
         >
           <Flexbox horizontal align="center" gap={8}>
-            <Icon fill={cssVar.colorTextSecondary} icon={ProviderIcon} size={{ fontSize: 18 }} />
+            <ProviderIcon size={18} />
             <Flexbox gap={2}>
               <Text style={{ fontSize: 13 }}>@{profile.username}</Text>
               <Text style={{ fontSize: 11 }} type="secondary">
@@ -64,7 +66,7 @@ export const SocialConnectButton = memo<SocialConnectButtonProps>(
           </Flexbox>
           <Tooltip title={t('profileSetup.socialLinks.disconnect', { defaultValue: 'Disconnect' })}>
             <ActionIcon
-              disabled={isLoading}
+              disabled={isDisabled}
               icon={isDisconnecting ? Loader2 : Link2Off}
               loading={isDisconnecting}
               size="small"
@@ -79,14 +81,8 @@ export const SocialConnectButton = memo<SocialConnectButtonProps>(
     return (
       <Button
         block
-        disabled={isLoading}
-        icon={
-          isConnecting ? (
-            <Spin size="small" />
-          ) : (
-            <Icon fill={cssVar.colorTextSecondary} icon={ProviderIcon} size={{ fontSize: 16 }} />
-          )
-        }
+        disabled={isDisabled}
+        icon={isConnecting ? <Spin size="small" /> : <ProviderIcon size={16} />}
         style={{
           alignItems: 'center',
           display: 'flex',
