@@ -50,7 +50,6 @@ registerRuntimes([
   memoryRuntime,
   activatorRuntime,
   messageRuntime,
-  toolsActivatorRuntime,
   localSystemRuntime,
   remoteDeviceRuntime,
   briefRuntime,
