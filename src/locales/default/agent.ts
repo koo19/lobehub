@@ -89,8 +89,13 @@ export default {
     'The App Secret of your bot application. It will be encrypted and stored securely.',
   'channel.charLimit': 'Character Limit',
   'channel.charLimitHint': 'Maximum number of characters per message',
+  'channel.concurrency': 'Concurrency Mode',
+  'channel.concurrencyDebounce': 'Debounce',
+  'channel.concurrencyHint':
+    'Queue processes messages one at a time; Debounce waits for a burst of messages to finish before processing',
+  'channel.concurrencyQueue': 'Queue',
   'channel.credentials': 'Credentials',
-  'channel.debounceMs': 'Message Merge Window (ms)',
+  'channel.debounceMs': 'Debounce Window (ms)',
   'channel.debounceMsHint':
     'How long to wait for additional messages before dispatching to the agent (ms)',
   'channel.dm': 'Direct Messages',
