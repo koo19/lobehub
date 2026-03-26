@@ -134,6 +134,7 @@ export const createRuntimeExecutors = (
 
     const stepDelta = buildStepToolDelta({
       activeDeviceId,
+      enabledToolIds: operationToolSet.enabledToolIds,
       forceFinish: state.forceFinish,
       localSystemManifest: LocalSystemManifest as unknown as LobeToolManifest,
       operationManifestMap: operationToolSet.manifestMap,
@@ -975,6 +976,7 @@ export const createRuntimeExecutors = (
       log(`[${operationLogId}] Executing tool ${toolName} ...`);
       const executionResult = await toolExecutionService.executeTool(chatToolPayload, {
         activeDeviceId: state.metadata?.activeDeviceId,
+        agentId: state.metadata?.agentId,
         memoryToolPermission: agentConfig?.chatConfig?.memory?.toolPermission,
         serverDB: ctx.serverDB,
         toolManifestMap: effectiveManifestMap,
@@ -1191,6 +1193,7 @@ export const createRuntimeExecutors = (
 
           const executionResult = await toolExecutionService.executeTool(chatToolPayload, {
             activeDeviceId: state.metadata?.activeDeviceId,
+            agentId: state.metadata?.agentId,
             memoryToolPermission: batchAgentConfig?.chatConfig?.memory?.toolPermission,
             serverDB: ctx.serverDB,
             toolManifestMap: batchManifestMap,

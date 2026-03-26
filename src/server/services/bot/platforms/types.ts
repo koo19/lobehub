@@ -1,3 +1,5 @@
+import type { Chat } from 'chat';
+
 // ============================================================================
 // Bot Platform Core Types
 // ============================================================================
@@ -85,6 +87,12 @@ export interface UsageStats {
  */
 export interface PlatformClient {
   readonly applicationId: string;
+  /**
+   * Apply platform-specific Chat SDK compatibility patches after bot initialization.
+   * Useful for adapter quirks that should stay encapsulated within the platform client.
+   */
+  applyChatPatches?: (chatBot: Chat<any>) => void;
+
   /** Create a Chat SDK adapter config for inbound message handling. */
   createAdapter: () => Record<string, any>;
 
@@ -108,6 +116,15 @@ export interface PlatformClient {
 
   /** Parse a composite message ID into the platform-native format. */
   parseMessageId: (compositeId: string) => string | number;
+
+  /**
+   * Register bot commands with the platform (e.g., Telegram setMyCommands).
+   * Called once during bot initialization with the list of available commands.
+   * Optional — platforms that don't support command menus can omit this.
+   */
+  registerBotCommands?: (
+    commands: Array<{ command: string; description: string }>,
+  ) => Promise<void>;
 
   /**
    * Resolve the correct thread ID for reaction API calls.
@@ -237,10 +254,10 @@ export interface PlatformDefinition {
   /**
    * Connection mode: how the platform communicates with the server.
    * - 'webhook': stateless HTTP callbacks (can run in serverless)
-   * - 'websocket': persistent connection (requires long-running process)
+   * - 'persistent': requires a long-running client (e.g. websocket or long-polling)
    * Defaults to 'webhook'.
    */
-  connectionMode?: 'webhook' | 'websocket';
+  connectionMode?: 'persistent' | 'webhook';
 
   /** The description of the platform. */
   description?: string;
