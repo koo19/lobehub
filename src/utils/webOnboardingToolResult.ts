@@ -44,6 +44,12 @@ export const formatWebOnboardingStateMessage = (state: UserAgentOnboardingContex
   const phaseGuidance = PHASE_GUIDANCE[state.phase] || '';
   const parts: string[] = [phaseGuidance];
 
+  if (state.remainingDiscoveryExchanges !== undefined && state.remainingDiscoveryExchanges > 0) {
+    parts.push(
+      `At least ${state.remainingDiscoveryExchanges} more user exchange(s) are needed before moving to summary.`,
+    );
+  }
+
   if (state.missingStructuredFields.length > 0) {
     const missingFields = formatNaturalList(
       state.missingStructuredFields.map((field) => FIELD_LABELS[field]),
