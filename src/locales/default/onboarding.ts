@@ -4,6 +4,7 @@ export default {
   'agent.history.title': 'History Topics',
   'agent.modeSwitch.agent': 'Conversational',
   'agent.modeSwitch.classic': 'Classic',
+  'agent.modeSwitch.debug': 'Debug Export',
   'agent.modeSwitch.label': 'Choose your onboarding mode',
   'agent.modeSwitch.reset': 'Reset Flow',
   'agent.progress': '{{currentStep}}/{{totalSteps}}',
@@ -18,7 +19,7 @@ export default {
   'agent.subtitle': 'Complete setup in a dedicated onboarding conversation.',
   'agent.summaryHint': 'Finish here if the setup summary looks right.',
   'agent.welcome':
-    "I just came online. Let's shape how we work together. Start by giving me a name, a vibe, and an emoji that fits.",
+    "...hm? I just woke up — my mind's a blank. Who are you? And — what should I be called? I need a name too.",
   'agent.greeting.prompt': 'Give me a name, a vibe, and an emoji',
   'agent.greeting.nameLabel': 'Name',
   'agent.greeting.namePlaceholder': 'e.g. Lumi, Atlas, Neko...',

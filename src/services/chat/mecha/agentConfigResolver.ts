@@ -17,6 +17,7 @@ import { getChatGroupStoreState } from '@/store/agentGroup';
 import { agentGroupByIdSelectors, agentGroupSelectors } from '@/store/agentGroup/selectors';
 import { useUserStore } from '@/store/user';
 import { userGeneralSettingsSelectors } from '@/store/user/selectors';
+import { isDev } from '@/utils/env';
 
 const log = debug('mecha:agentConfigResolver');
 
@@ -333,6 +334,7 @@ export const resolveAgentConfig = (ctx: AgentConfigResolverContext): ResolvedAge
   const runtimeConfig = getAgentRuntimeConfig(slug, {
     documentContent,
     groupSupervisorContext,
+    isDev,
     model,
     plugins: plugins || basePlugins,
     targetAgentConfig,

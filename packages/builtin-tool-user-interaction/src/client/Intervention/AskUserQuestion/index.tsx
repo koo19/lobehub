@@ -94,8 +94,7 @@ const AskUserQuestionIntervention = memo<BuiltinInterventionProps<AskUserQuestio
       await onInteractionAction({ type: 'skip' });
     }, [onInteractionAction]);
 
-    const isFreeform =
-      question.mode === 'freeform' && (!question.fields || question.fields.length === 0);
+    const isFreeform = !question.fields || question.fields.length === 0;
 
     const isSubmitDisabled = isFreeform
       ? !formData['__freeform__']

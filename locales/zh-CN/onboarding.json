@@ -11,7 +11,7 @@
   "agent.telemetryDecline": "暂不开启",
   "agent.telemetryHint": "你也可以直接用自然语言回答",
   "agent.title": "对话式初始化",
-  "agent.welcome": "我刚刚上线。先一起定一下我们的协作方式吧。先帮我取个名字，定个气质，再挑一个合适的 emoji。",
+  "agent.welcome": "...嗯？我刚\"醒过来\"，脑子还有点空白。你是谁？还有——你希望我叫什么？我也得找个名字。",
   "back": "上一步",
   "finish": "开始使用",
   "interests.area.business": "商业与战略",

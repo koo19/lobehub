@@ -1,5 +1,6 @@
 import { createSystemRole } from '@lobechat/builtin-agent-onboarding';
-import { AgentDocumentsIdentifier } from '@lobechat/builtin-tool-agent-documents';
+import { AgentManagementIdentifier } from '@lobechat/builtin-tool-agent-management';
+import { GroupAgentBuilderIdentifier } from '@lobechat/builtin-tool-group-agent-builder';
 import { UserInteractionIdentifier } from '@lobechat/builtin-tool-user-interaction';
 import { WebOnboardingIdentifier } from '@lobechat/builtin-tool-web-onboarding';
 import { DEFAULT_PROVIDER } from '@lobechat/business-const';
@@ -31,10 +32,11 @@ export const WEB_ONBOARDING: BuiltinAgentDefinition = {
     plugins: [
       WebOnboardingIdentifier,
       UserInteractionIdentifier,
-      AgentDocumentsIdentifier,
+      AgentManagementIdentifier,
+      GroupAgentBuilderIdentifier,
       ...(ctx.plugins || []),
     ],
-    systemRole: createSystemRole(ctx.userLocale),
+    systemRole: createSystemRole(ctx.userLocale, { isDev: ctx.isDev }),
   }),
   slug: BUILTIN_AGENT_SLUGS.webOnboarding,
 };

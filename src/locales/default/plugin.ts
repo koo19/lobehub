@@ -55,6 +55,7 @@ export default {
   'builtins.lobe-cloud-sandbox.title': 'Cloud Sandbox',
   'builtins.lobe-group-agent-builder.apiName.batchCreateAgents': 'Batch create agents',
   'builtins.lobe-group-agent-builder.apiName.createAgent': 'Create agent',
+  'builtins.lobe-group-agent-builder.apiName.createGroup': 'Create group',
   'builtins.lobe-group-agent-builder.apiName.getAgentInfo': 'Get member info',
   'builtins.lobe-group-agent-builder.apiName.getAvailableModels': 'Get available models',
   'builtins.lobe-group-agent-builder.apiName.installPlugin': 'Install Skill',

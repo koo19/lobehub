@@ -52,6 +52,9 @@ export interface RuntimeContext {
   /** Context for GroupSupervisor */
   groupSupervisorContext?: GroupSupervisorContext;
 
+  /** Whether running in development mode */
+  isDev?: boolean;
+
   /** Current model being used */
   model?: string;
 

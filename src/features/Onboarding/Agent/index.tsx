@@ -20,6 +20,7 @@ import { isDev } from '@/utils/env';
 
 import { resolveAgentOnboardingContext } from './context';
 import AgentOnboardingConversation from './Conversation';
+import AgentOnboardingDebugExportButton from './DebugExportButton';
 import HistoryPanel from './HistoryPanel';
 import OnboardingConversationProvider from './OnboardingConversationProvider';
 
@@ -155,6 +156,10 @@ const AgentOnboardingPage = memo(() => {
           actions={
             isDev ? (
               <>
+                <AgentOnboardingDebugExportButton
+                  agentId={onboardingAgentId}
+                  topicId={effectiveTopicId}
+                />
                 {historyTopics.length > 0 && (
                   <Button
                     icon={<History size={14} />}
