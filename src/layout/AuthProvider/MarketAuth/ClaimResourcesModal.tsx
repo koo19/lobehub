@@ -4,7 +4,7 @@ import { Flexbox, Modal, Text } from '@lobehub/ui';
 import { App, Checkbox, List } from 'antd';
 import { cssVar } from 'antd-style';
 import { Package, Wrench } from 'lucide-react';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { lambdaClient } from '@/libs/trpc/client';
@@ -23,13 +23,20 @@ export const ClaimResourcesModal = memo<ClaimResourcesModalProps>(
     const { t } = useTranslation('marketAuth');
     const { message } = App.useApp();
 
-    const [selectedPlugins, setSelectedPlugins] = useState<Set<string>>(() => {
-      return new Set(resources.plugins.map((r) => String(r.id)));
-    });
-    const [selectedSkills, setSelectedSkills] = useState<Set<string>>(() => {
-      return new Set(resources.skills.map((r) => String(r.id)));
-    });
+    const [selectedPlugins, setSelectedPlugins] = useState<Set<string>>(new Set());
+    const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
     const [isClaiming, setIsClaiming] = useState(false);
+
+    useEffect(() => {
+      if (!open) {
+        setSelectedPlugins(new Set());
+        setSelectedSkills(new Set());
+        return;
+      }
+
+      setSelectedPlugins(new Set(resources.plugins.map((resource) => String(resource.id))));
+      setSelectedSkills(new Set(resources.skills.map((resource) => String(resource.id))));
+    }, [open, resources]);
 
     const togglePlugin = useCallback((id: string) => {
       setSelectedPlugins((prev) => {

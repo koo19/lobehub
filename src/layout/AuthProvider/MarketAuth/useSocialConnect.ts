@@ -6,6 +6,8 @@ import { lambdaClient, toolsClient } from '@/libs/trpc/client';
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_TIMEOUT_MS = 15_000;
+const SOCIAL_PROFILE_AUTH_CALLBACK = 'SOCIAL_PROFILE_AUTH_CALLBACK';
+const SOCIAL_PROFILE_AUTH_ERROR = 'SOCIAL_PROFILE_AUTH_ERROR';
 
 export type SocialProvider = 'github' | 'twitter';
 
@@ -60,6 +62,7 @@ export const useSocialConnect = ({
   const windowCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const authCompletedRef = useRef(false);
 
   const cleanup = useCallback(() => {
     if (windowCheckIntervalRef.current) {
@@ -121,56 +124,77 @@ export const useSocialConnect = ({
     }
   }, [onClaimableResourcesFound]);
 
-  // Handle successful OAuth completion
-  const handleOAuthSuccess = useCallback(async () => {
-    cleanup();
-    const newProfile = await fetchProfile();
-    if (newProfile) {
+  const handleConnectedProfile = useCallback(
+    async (newProfile: SocialProfile) => {
+      if (authCompletedRef.current) return;
+
+      authCompletedRef.current = true;
+      cleanup();
+      setProfile(newProfile);
       onConnectSuccess?.(newProfile);
-      // Check for claimable resources after successful connection
       await checkClaimableResources();
-    }
-  }, [cleanup, fetchProfile, onConnectSuccess, checkClaimableResources]);
+    },
+    [checkClaimableResources, cleanup, onConnectSuccess],
+  );
 
-  // Listen for OAuth success message from popup window
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
+  const confirmConnection = useCallback(async () => {
+    const newProfile = await fetchProfile();
 
-      if (event.data?.type === 'SOCIAL_PROFILE_AUTH_SUCCESS' && event.data?.provider === provider) {
-        await handleOAuthSuccess();
-      }
-    };
+    if (!newProfile) return false;
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [provider, handleOAuthSuccess]);
+    await handleConnectedProfile(newProfile);
 
-  // Fallback polling when window.closed is not accessible (COOP)
+    return true;
+  }, [fetchProfile, handleConnectedProfile]);
+
+  // Fallback polling when popup callback arrives before the connection state is queryable
   const startFallbackPolling = useCallback(() => {
-    if (pollIntervalRef.current) return;
+    if (pollIntervalRef.current || authCompletedRef.current) return;
 
-    pollIntervalRef.current = setInterval(async () => {
+    setIsWaitingAuth(true);
+
+    const runCheck = async () => {
       try {
-        const newProfile = await fetchProfile();
-        if (newProfile) {
-          cleanup();
-          onConnectSuccess?.(newProfile);
-          await checkClaimableResources();
-        }
+        await confirmConnection();
       } catch (err) {
         console.error('[SocialConnect] Polling check failed:', err);
       }
-    }, POLL_INTERVAL_MS);
+    };
+
+    pollIntervalRef.current = setInterval(runCheck, POLL_INTERVAL_MS);
+    void runCheck();
 
     pollTimeoutRef.current = setTimeout(() => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
       }
-      setIsWaitingAuth(false);
+      if (!authCompletedRef.current) {
+        setIsWaitingAuth(false);
+      }
     }, POLL_TIMEOUT_MS);
-  }, [fetchProfile, cleanup, onConnectSuccess, checkClaimableResources]);
+  }, [confirmConnection]);
+
+  // Listen for OAuth success message from popup window
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.provider !== provider) return;
+
+      if (event.data?.type === SOCIAL_PROFILE_AUTH_CALLBACK) {
+        startFallbackPolling();
+      }
+
+      if (event.data?.type === SOCIAL_PROFILE_AUTH_ERROR) {
+        cleanup();
+        setError(event.data?.error || 'Failed to connect');
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [cleanup, provider, startFallbackPolling]);
 
   // Monitor OAuth window close
   const startWindowMonitor = useCallback(
@@ -184,13 +208,9 @@ export const useSocialConnect = ({
             }
             oauthWindowRef.current = null;
             // Check if OAuth was successful
-            const newProfile = await fetchProfile();
-            if (newProfile) {
-              cleanup();
-              onConnectSuccess?.(newProfile);
-              await checkClaimableResources();
-            } else {
-              setIsWaitingAuth(false);
+            const connected = await confirmConnection();
+            if (!connected) {
+              startFallbackPolling();
             }
           }
         } catch {
@@ -203,13 +223,14 @@ export const useSocialConnect = ({
         }
       }, 500);
     },
-    [fetchProfile, cleanup, onConnectSuccess, checkClaimableResources, startFallbackPolling],
+    [confirmConnection, startFallbackPolling],
   );
 
   // Open OAuth popup window
   const openOAuthWindow = useCallback(
     (oauthUrl: string) => {
       cleanup();
+      authCompletedRef.current = false;
       setIsWaitingAuth(true);
       setError(null);
 

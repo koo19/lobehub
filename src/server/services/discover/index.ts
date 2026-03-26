@@ -20,6 +20,7 @@ import {
   type DiscoverPluginItem,
   type DiscoverProviderDetail,
   type DiscoverProviderItem,
+  type DiscoverSkillItem,
   type DiscoverUserProfile,
   type IdentifiersResponse,
   type McpListResponse,
@@ -1955,7 +1956,7 @@ export class DiscoverService {
       }));
 
       // Transform skills to DiscoverSkillItem format
-      const transformedSkills = (skills || []).map((skill: any) => ({
+      const transformedSkills: DiscoverSkillItem[] = (skills || []).map((skill: any) => ({
         author: skill.author || '',
         category: skill.category,
         commentCount: skill.commentCount,
@@ -1971,14 +1972,16 @@ export class DiscoverService {
         isValidated: skill.isValidated || false,
         name: skill.name || skill.identifier,
         ratingAvg: skill.ratingAvg,
+        ratingCount: skill.ratingCount || 0,
         resourcesCount: skill.resourcesCount,
         status: skill.status,
         tags: skill.tags || [],
         updatedAt: skill.updatedAt,
+        version: skill.version || 'latest',
       }));
 
       // Transform plugins to DiscoverPluginItem format
-      const transformedPlugins = (plugins || []).map((plugin: any) => ({
+      const transformedPlugins: DiscoverPluginItem[] = (plugins || []).map((plugin: any) => ({
         author: plugin.author || '',
         avatar: plugin.avatar,
         category: plugin.category,
@@ -1991,6 +1994,7 @@ export class DiscoverService {
         isFeatured: plugin.isFeatured || false,
         isOfficial: plugin.isOfficial || false,
         isValidated: plugin.isValidated || false,
+        manifest: plugin.manifest || '',
         schemaVersion: 1,
         status: plugin.status,
         tags: plugin.tags || [],

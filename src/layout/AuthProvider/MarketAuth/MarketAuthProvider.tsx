@@ -507,6 +507,7 @@ export const MarketAuthProvider = ({ children, isDesktop }: MarketAuthProviderPr
   const handleCloseClaimModal = useCallback(() => {
     setShowClaimModal(false);
     setClaimableResources(null);
+    setPendingClaimSuccessCallback(null);
   }, []);
 
   /**

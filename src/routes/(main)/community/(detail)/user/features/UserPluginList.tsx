@@ -2,7 +2,7 @@
 
 import { Flexbox, Grid, Tag, Text } from '@lobehub/ui';
 import { Input, Pagination } from 'antd';
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUserDetailContext } from './DetailProvider';
@@ -41,7 +41,7 @@ const UserPluginList = memo<UserPluginListProps>(({ rows = 4, pageSize = 8 }) =>
   }, [filteredPlugins, currentPage, pageSize]);
 
   // Reset to page 1 when search changes
-  useMemo(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
 

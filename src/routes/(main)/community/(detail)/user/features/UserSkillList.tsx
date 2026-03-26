@@ -3,7 +3,7 @@
 import { Flexbox, Grid, Tag, Text } from '@lobehub/ui';
 import { Button, Input, Pagination } from 'antd';
 import { Plus } from 'lucide-react';
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUserDetailContext } from './DetailProvider';
@@ -44,7 +44,7 @@ const UserSkillList = memo<UserSkillListProps>(({ rows = 4, pageSize = 8 }) => {
   }, [filteredSkills, currentPage, pageSize]);
 
   // Reset to page 1 when search changes
-  useMemo(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
 
