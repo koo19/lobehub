@@ -336,15 +336,71 @@ export class OnboardingService {
     const userState = await this.getUserState();
     const state = this.ensureState(userState.agentOnboarding);
     const missingStructuredFields = await this.getMissingStructuredFields();
-    const phase = state.finishedAt
-      ? ('summary' as const)
-      : await this.derivePhase(missingStructuredFields);
+
+    if (state.finishedAt) {
+      return {
+        finished: true,
+        missingStructuredFields,
+        phase: 'summary',
+        topicId: state.activeTopicId,
+        version: state.version,
+      };
+    }
+
+    const topicId = state.activeTopicId;
+    let currentUserMessageCount: number | undefined;
+    let discoveryContext:
+      | { currentUserMessageCount: number; startUserMessageCount: number }
+      | undefined;
+
+    // Build discovery context if we have a topic and are past agent_identity + user_identity
+    if (topicId) {
+      const pastPreDiscovery =
+        !missingStructuredFields.includes('agentName') &&
+        !missingStructuredFields.includes('fullName');
+
+      if (pastPreDiscovery) {
+        currentUserMessageCount = await this.countTopicUserMessages(topicId);
+
+        // Capture baseline on first entry into discovery
+        if (state.discoveryStartUserMessageCount === undefined) {
+          const updatedState = {
+            ...state,
+            discoveryStartUserMessageCount: currentUserMessageCount,
+          };
+          await this.saveState(updatedState);
+          state.discoveryStartUserMessageCount = currentUserMessageCount;
+        }
+
+        discoveryContext = {
+          currentUserMessageCount,
+          startUserMessageCount: state.discoveryStartUserMessageCount,
+        };
+      }
+    }
+
+    const phase = await this.derivePhase(missingStructuredFields, discoveryContext);
+
+    // Compute pacing data for discovery phase
+    let discoveryUserMessageCount: number | undefined;
+    let remainingDiscoveryExchanges: number | undefined;
+
+    if (discoveryContext) {
+      discoveryUserMessageCount =
+        discoveryContext.currentUserMessageCount - discoveryContext.startUserMessageCount;
+      remainingDiscoveryExchanges = Math.max(
+        0,
+        MIN_DISCOVERY_USER_MESSAGES - discoveryUserMessageCount,
+      );
+    }
 
     return {
-      finished: !!state.finishedAt,
+      ...(discoveryUserMessageCount !== undefined && { discoveryUserMessageCount }),
+      finished: false,
       missingStructuredFields,
       phase,
-      topicId: state.activeTopicId,
+      ...(remainingDiscoveryExchanges !== undefined && { remainingDiscoveryExchanges }),
+      topicId,
       version: state.version,
     };
   };
