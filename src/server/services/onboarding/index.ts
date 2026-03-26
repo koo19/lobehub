@@ -1,14 +1,13 @@
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
 import { CURRENT_ONBOARDING_VERSION } from '@lobechat/const';
 import type {
+  OnboardingPhase,
+  SaveUserQuestionField,
+  SaveUserQuestionInput,
   UserAgentOnboarding,
   UserAgentOnboardingContext,
-  UserAgentOnboardingControl,
-  UserAgentOnboardingDraft,
-  UserAgentOnboardingNode,
-  UserAgentOnboardingUpdate,
 } from '@lobechat/types';
-import { AGENT_ONBOARDING_NODES, MAX_ONBOARDING_STEPS } from '@lobechat/types';
+import { MAX_ONBOARDING_STEPS, SAVE_USER_QUESTION_FIELDS } from '@lobechat/types';
 import { merge } from '@lobechat/utils';
 import { and, eq } from 'drizzle-orm';
 
@@ -17,121 +16,51 @@ import { getDocumentTemplate } from '@/database/models/agentDocuments/templates'
 import { MessageModel } from '@/database/models/message';
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
-import { messages, threads, topics } from '@/database/schemas';
+import {
+  messages,
+  threads,
+  topics,
+  userPersonaDocumentHistories,
+  userPersonaDocuments,
+} from '@/database/schemas';
 import type { LobeChatDatabase } from '@/database/type';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { AgentService } from '@/server/services/agent';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { translation } from '@/server/translation';
 
-import { NODE_HANDLERS } from './nodeHandlers';
-import { getNodeDraftState } from './nodeSchema';
-
-type OnboardingPatchInput = Record<string, unknown>;
-
-const ONBOARDING_TOOL_NAMES = [
-  'getOnboardingState',
-  'saveAnswer',
-  'completeCurrentStep',
-  'returnToOnboarding',
-  'finishOnboarding',
-] as const;
-const REMOVED_ONBOARDING_NODES = ['proSettings'] as const;
+const STRUCTURED_FIELD_LABELS: Record<SaveUserQuestionField, string> = {
+  agentEmoji: 'agent emoji',
+  agentName: 'agent name',
+  fullName: 'full name',
+  interests: 'interests',
+  responseLanguage: 'response language',
+};
 
 const defaultAgentOnboardingState = (): UserAgentOnboarding => ({
-  completedNodes: [],
-  draft: {},
   version: CURRENT_ONBOARDING_VERSION,
 });
 
-const isValidNode = (node?: string): node is UserAgentOnboardingNode =>
-  !!node && AGENT_ONBOARDING_NODES.includes(node as UserAgentOnboardingNode);
+const formatNaturalList = (items: string[]) => {
+  if (items.length <= 1) return items[0] || '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
 
-const getNextNode = (node?: UserAgentOnboardingNode) => {
-  if (!node) return undefined;
-
-  const currentIndex = AGENT_ONBOARDING_NODES.indexOf(node);
-  if (currentIndex === -1) return undefined;
-
-  return AGENT_ONBOARDING_NODES[currentIndex + 1];
+  return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
 };
 
-const getFirstIncompleteNode = (completedNodes: UserAgentOnboardingNode[] = []) => {
-  const completedNodeSet = new Set(completedNodes);
+const isStructuredField = (value: string): value is SaveUserQuestionField =>
+  SAVE_USER_QUESTION_FIELDS.includes(value as SaveUserQuestionField);
 
-  return AGENT_ONBOARDING_NODES.find((node) => !completedNodeSet.has(node));
-};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const dedupeNodes = (nodes: UserAgentOnboardingNode[] = []) => Array.from(new Set(nodes));
-
-const getNodeIndex = (node?: UserAgentOnboardingNode) =>
-  node ? AGENT_ONBOARDING_NODES.indexOf(node) : -1;
-
-interface OnboardingError {
-  code: 'INCOMPLETE_NODE_DATA' | 'INVALID_PATCH_SHAPE' | 'NODE_MISMATCH' | 'ONBOARDING_COMPLETE';
-  message: string;
-}
-
-interface CommitStepResult {
+interface SaveUserQuestionResult {
   content: string;
-  control: UserAgentOnboardingControl;
+  ignoredFields?: string[];
+  savedFields?: SaveUserQuestionField[];
   success: boolean;
+  unchangedFields?: SaveUserQuestionField[];
 }
-
-interface ProposePatchResult {
-  activeNode?: UserAgentOnboardingNode;
-  activeNodeDraftState?: { missingFields?: string[]; status: 'complete' | 'empty' | 'partial' };
-  committedValue?: unknown;
-  content: string;
-  control?: UserAgentOnboardingControl;
-  draft: UserAgentOnboardingDraft;
-  error?: OnboardingError;
-  mismatch?: boolean;
-  nextAction: 'ask' | 'commit' | 'confirm';
-  processedNodes?: UserAgentOnboardingNode[];
-  requestedNode?: UserAgentOnboardingNode;
-  success: boolean;
-}
-
-const buildOnboardingControl = ({
-  activeNode,
-  activeNodeDraftState,
-}: {
-  activeNode?: UserAgentOnboardingNode;
-  activeNodeDraftState?: { missingFields?: string[]; status: 'complete' | 'empty' | 'partial' };
-}): UserAgentOnboardingControl => {
-  const missingFields = activeNodeDraftState?.missingFields ?? [];
-  const canCompleteCurrentStep =
-    !!activeNode && activeNode !== 'summary' && activeNodeDraftState?.status === 'complete';
-  const canFinish = activeNode === 'summary';
-  const allowedTools = ['getOnboardingState', 'returnToOnboarding'];
-
-  if (activeNode) {
-    if (activeNode === 'summary') {
-      allowedTools.push('finishOnboarding');
-    } else {
-      allowedTools.push('saveAnswer');
-      if (canCompleteCurrentStep) allowedTools.push('completeCurrentStep');
-    }
-  }
-
-  return {
-    allowedTools: allowedTools.filter(
-      (toolName, index, list) =>
-        ONBOARDING_TOOL_NAMES.includes(toolName as (typeof ONBOARDING_TOOL_NAMES)[number]) &&
-        list.indexOf(toolName) === index,
-    ),
-    canCompleteCurrentStep,
-    canFinish,
-    missingFields,
-  };
-};
-
-const getActiveNode = (state: Pick<UserAgentOnboarding, 'completedNodes' | 'finishedAt'>) => {
-  if (state.finishedAt) return undefined;
-
-  return getFirstIncompleteNode(state.completedNodes ?? []);
-};
 
 export class OnboardingService {
   private readonly agentDocumentsService: AgentDocumentsService;
@@ -230,38 +159,36 @@ export class OnboardingService {
   };
 
   private ensureState = (state?: UserAgentOnboarding): UserAgentOnboarding => {
-    const invalidCompletedNodes = (state?.completedNodes ?? []).filter(
-      (node) => !isValidNode(node),
-    );
-
-    if (
-      !state ||
-      invalidCompletedNodes.some(
-        (node) =>
-          !REMOVED_ONBOARDING_NODES.includes(node as (typeof REMOVED_ONBOARDING_NODES)[number]),
-      ) ||
-      (state.version ?? 0) < CURRENT_ONBOARDING_VERSION
-    ) {
+    if (!state || (state.version ?? 0) < CURRENT_ONBOARDING_VERSION) {
       return defaultAgentOnboardingState();
     }
 
     const mergedState = merge(defaultAgentOnboardingState(), state ?? {}) as UserAgentOnboarding & {
-      currentNode?: UserAgentOnboardingNode;
+      agentIdentity?: unknown;
+      completedNodes?: unknown;
+      currentNode?: unknown;
+      draft?: unknown;
       executionGuard?: unknown;
+      profile?: unknown;
     };
     const {
-      currentNode: legacyCurrentNode,
-      executionGuard: legacyExecutionGuard,
+      agentIdentity,
+      completedNodes,
+      currentNode,
+      draft,
+      executionGuard,
+      profile,
       ...nextState
     } = mergedState;
-    void legacyCurrentNode;
-    void legacyExecutionGuard;
+    void agentIdentity;
+    void completedNodes;
+    void currentNode;
+    void draft;
+    void executionGuard;
+    void profile;
 
     return {
       ...nextState,
-      completedNodes: dedupeNodes((nextState.completedNodes ?? []).filter(isValidNode)),
-      draft: nextState.draft ?? {},
-      profile: nextState.profile ?? {},
       version: nextState.version ?? CURRENT_ONBOARDING_VERSION,
     };
   };
@@ -321,6 +248,42 @@ export class OnboardingService {
     return { created: true, topicId: topic.id };
   };
 
+  private getMissingStructuredFields = async (): Promise<SaveUserQuestionField[]> => {
+    const userState = await this.getUserState();
+    const missingFields: SaveUserQuestionField[] = [];
+
+    // Agent identity fields — stored on inbox agent
+    const inboxAgent = await this.agentModel.getBuiltinAgent(BUILTIN_AGENT_SLUGS.inbox);
+    if (!inboxAgent?.title?.trim()) missingFields.push('agentName');
+    if (!inboxAgent?.avatar?.trim()) missingFields.push('agentEmoji');
+
+    // User fields
+    if (!userState.fullName?.trim()) missingFields.push('fullName');
+    if (!(userState.interests?.length ?? 0)) missingFields.push('interests');
+    if (!userState.settings?.general?.responseLanguage?.trim())
+      missingFields.push('responseLanguage');
+
+    return missingFields;
+  };
+
+  private derivePhase = async (
+    missingStructuredFields: SaveUserQuestionField[],
+  ): Promise<OnboardingPhase> => {
+    // Phase is derived purely from structured field state — no document sniffing.
+    // agentName/agentEmoji not saved → agent_identity
+    if (missingStructuredFields.includes('agentName')) return 'agent_identity';
+    // fullName not saved → user_identity
+    if (missingStructuredFields.includes('fullName')) return 'user_identity';
+    // interests or responseLanguage not saved → discovery
+    if (
+      missingStructuredFields.includes('interests') ||
+      missingStructuredFields.includes('responseLanguage')
+    )
+      return 'discovery';
+
+    return 'summary';
+  };
+
   getOrCreateState = async () => {
     const builtinAgent = await this.agentService.getBuiltinAgent(BUILTIN_AGENT_SLUGS.webOnboarding);
 
@@ -349,381 +312,143 @@ export class OnboardingService {
   getState = async (): Promise<UserAgentOnboardingContext> => {
     const userState = await this.getUserState();
     const state = this.ensureState(userState.agentOnboarding);
-    const committed = {
-      agentIdentity: state.agentIdentity,
-      profile: {
-        ...state.profile,
-        ...(userState.fullName && !state.profile?.identity?.name
-          ? {
-              identity: {
-                ...state.profile?.identity,
-                name: userState.fullName,
-                summary: state.profile?.identity?.summary ?? userState.fullName,
-              },
-            }
-          : {}),
-        ...(userState.interests?.length && !(state.profile?.workContext?.interests?.length ?? 0)
-          ? {
-              interests: userState.interests,
-            }
-          : {}),
-      },
-      responseLanguage: userState.settings.general?.responseLanguage,
-    };
-    const activeNode = getActiveNode(state);
-    const draft = state.draft ?? {};
-    const activeNodeDraftState = getNodeDraftState(activeNode, draft);
+    const missingStructuredFields = await this.getMissingStructuredFields();
+    const phase = state.finishedAt
+      ? ('summary' as const)
+      : await this.derivePhase(missingStructuredFields);
 
     return {
-      activeNode,
-      activeNodeDraftState,
-      committed,
-      completedNodes: state.completedNodes ?? [],
-      control: buildOnboardingControl({
-        activeNode,
-        activeNodeDraftState,
-      }),
-      draft,
-      finishedAt: state.finishedAt,
+      finished: !!state.finishedAt,
+      missingStructuredFields,
+      phase,
       topicId: state.activeTopicId,
       version: state.version,
     };
   };
 
-  saveAnswer = async (params: {
-    updates: Array<Pick<UserAgentOnboardingUpdate, 'node'> & { patch: OnboardingPatchInput }>;
-  }): Promise<ProposePatchResult> => {
-    const updates = [...params.updates].sort((left, right) => {
-      return getNodeIndex(left.node) - getNodeIndex(right.node);
-    });
+  saveUserQuestion = async (input: SaveUserQuestionInput): Promise<SaveUserQuestionResult> => {
+    const rawInput = isRecord(input) ? input : {};
+    const ignoredFields = Object.keys(rawInput).filter((key) => !isStructuredField(key));
+    const parsed = rawInput;
+    const savedFields: SaveUserQuestionField[] = [];
+    const unchangedFields: SaveUserQuestionField[] = [];
+    const userState = await this.getUserState();
+    const userPatch: { fullName?: string; interests?: string[] } = {};
 
-    let latestResult: ProposePatchResult | undefined;
-    const processedNodes: UserAgentOnboardingNode[] = [];
+    const fullName =
+      typeof parsed.fullName === 'string' && parsed.fullName.trim()
+        ? parsed.fullName.trim()
+        : undefined;
+    if (fullName) {
+      if (fullName === userState.fullName) {
+        unchangedFields.push('fullName');
+      } else {
+        userPatch.fullName = fullName;
+        savedFields.push('fullName');
+      }
+    }
+
+    const interests = Array.isArray(parsed.interests)
+      ? parsed.interests
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : undefined;
+    if (interests?.length) {
+      if (JSON.stringify(interests) === JSON.stringify(userState.interests ?? [])) {
+        unchangedFields.push('interests');
+      } else {
+        userPatch.interests = interests;
+        savedFields.push('interests');
+      }
+    }
+
+    if (Object.keys(userPatch).length > 0) {
+      await this.userModel.updateUser(userPatch);
+    }
+
+    const responseLanguage =
+      typeof parsed.responseLanguage === 'string' && parsed.responseLanguage.trim()
+        ? parsed.responseLanguage.trim()
+        : undefined;
+    if (responseLanguage) {
+      const currentResponseLanguage = userState.settings?.general?.responseLanguage;
+
+      if (responseLanguage === currentResponseLanguage) {
+        unchangedFields.push('responseLanguage');
+      } else {
+        const currentSettings = await this.userModel.getUserSettings();
+        await this.userModel.updateSetting({
+          general: merge(currentSettings?.general || {}, {
+            responseLanguage,
+          }),
+        });
+        savedFields.push('responseLanguage');
+      }
+    }
+
+    // Update inbox agent avatar and title when agent identity fields are provided
+    const agentName =
+      typeof parsed.agentName === 'string' && parsed.agentName.trim()
+        ? parsed.agentName.trim()
+        : undefined;
+    const agentEmoji =
+      typeof parsed.agentEmoji === 'string' && parsed.agentEmoji.trim()
+        ? parsed.agentEmoji.trim()
+        : undefined;
+
+    if (agentName || agentEmoji) {
+      try {
+        const inboxAgentId = await this.getInboxAgentId();
+        const agentPatch: { avatar?: string; title?: string } = {};
+
+        if (agentName) agentPatch.title = agentName;
+        if (agentEmoji) agentPatch.avatar = agentEmoji;
+
+        await this.agentModel.update(inboxAgentId, agentPatch);
+
+        if (agentName) savedFields.push('agentName');
+        if (agentEmoji) savedFields.push('agentEmoji');
+      } catch (error) {
+        console.error('[OnboardingService] Failed to update inbox agent identity:', error);
+      }
+    }
+
+    if (savedFields.length === 0 && unchangedFields.length === 0) {
+      return {
+        content:
+          'No supported structured fields were provided. Use document tools for markdown-based onboarding content.',
+        ignoredFields,
+        success: false,
+      };
+    }
+
     const contentParts: string[] = [];
 
-    for (const update of updates) {
-      const result = await this.proposeSinglePatch(update);
-
-      latestResult = result;
-      contentParts.push(result.content);
-
-      if (!result.success) {
-        const nextContext = await this.getState();
-
-        return {
-          ...result,
-          activeNode: nextContext.activeNode,
-          activeNodeDraftState: nextContext.activeNodeDraftState,
-          content: contentParts.join('\n'),
-          control: nextContext.control,
-          draft: nextContext.draft,
-          processedNodes,
-        };
-      }
-
-      processedNodes.push(update.node);
-
-      if (result.activeNodeDraftState?.status === 'partial') {
-        const nextContext = await this.getState();
-
-        return {
-          ...result,
-          activeNode: nextContext.activeNode,
-          activeNodeDraftState: nextContext.activeNodeDraftState,
-          content: contentParts.join('\n'),
-          control: nextContext.control,
-          draft: nextContext.draft,
-          processedNodes,
-        };
-      }
-    }
-
-    const nextContext = await this.getState();
-
-    return {
-      ...(latestResult ?? {
-        content: 'No onboarding updates were provided.',
-        draft: nextContext.draft,
-        nextAction: 'ask' as const,
-        success: false,
-      }),
-      activeNode: nextContext.activeNode,
-      activeNodeDraftState: nextContext.activeNodeDraftState,
-      content: contentParts.join('\n'),
-      control: nextContext.control,
-      draft: nextContext.draft,
-      processedNodes,
-    };
-  };
-
-  private proposeSinglePatch = async (
-    params: Pick<UserAgentOnboardingUpdate, 'node'> & { patch: OnboardingPatchInput },
-  ): Promise<ProposePatchResult> => {
-    const context = await this.getState();
-    const activeNode = context.activeNode;
-
-    if (!activeNode) {
-      return {
-        content: 'Onboarding is already complete.',
-        draft: context.draft,
-        error: {
-          code: 'ONBOARDING_COMPLETE',
-          message: 'Onboarding is already complete.',
-        },
-        nextAction: 'ask',
-        success: false,
-      };
-    }
-
-    if (params.node !== activeNode) {
-      return {
-        activeNode,
-        content: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}".`,
-        draft: context.draft,
-        error: {
-          code: 'NODE_MISMATCH',
-          message: `Node mismatch: active onboarding step is "${activeNode}", but you called "${params.node}".`,
-        },
-        mismatch: true,
-        nextAction: 'ask',
-        requestedNode: params.node,
-        success: false,
-      };
-    }
-
-    if (activeNode === 'summary') {
-      const content = 'Summary is handled after all previous onboarding nodes are complete.';
-
-      return {
-        content,
-        draft: context.draft,
-        error: {
-          code: 'INCOMPLETE_NODE_DATA',
-          message: content,
-        },
-        nextAction: 'ask',
-        success: false,
-      };
-    }
-
-    const handler = NODE_HANDLERS[activeNode];
-
-    if (!handler) {
-      const content = `Unknown node "${activeNode}".`;
-
-      return {
-        activeNode,
-        activeNodeDraftState: getNodeDraftState(activeNode, context.draft),
-        content,
-        draft: context.draft,
-        error: {
-          code: 'INVALID_PATCH_SHAPE',
-          message: content,
-        },
-        nextAction: 'ask',
-        success: false,
-      };
-    }
-
-    const extractedDraft = handler.extractDraft(params.patch);
-
-    if (!extractedDraft) {
-      const content = `Patch for "${activeNode}" did not contain any valid node-scoped fields.`;
-
-      return {
-        activeNode,
-        activeNodeDraftState: getNodeDraftState(activeNode, context.draft),
-        content,
-        draft: context.draft,
-        error: {
-          code: 'INVALID_PATCH_SHAPE',
-          message: content,
-        },
-        nextAction: 'ask',
-        success: false,
-      };
-    }
-
-    const draftValue = handler.getDraftValue(extractedDraft as UserAgentOnboardingDraft);
-    const draft = handler.mergeDraft(context.draft, draftValue);
-
-    await this.saveState({ ...(await this.ensurePersistedState()), draft });
-
-    const draftState = getNodeDraftState(activeNode, draft);
-
-    if (draftState?.status === 'complete') {
-      const commitResult = await this.commitActiveStep(
-        await this.ensurePersistedState(),
-        activeNode,
+    if (savedFields.length > 0) {
+      contentParts.push(
+        `Saved ${formatNaturalList(savedFields.map((field) => STRUCTURED_FIELD_LABELS[field]))}.`,
       );
-
-      return {
-        activeNode,
-        activeNodeDraftState: draftState,
-        committedValue: handler.getDraftValue(draft),
-        content: commitResult.content,
-        control: commitResult.control,
-        draft: {},
-        nextAction: 'ask',
-        success: commitResult.success,
-      };
     }
 
-    const missingFields = draftState?.missingFields?.join(', ');
+    if (unchangedFields.length > 0) {
+      contentParts.push(
+        `${formatNaturalList(unchangedFields.map((field) => STRUCTURED_FIELD_LABELS[field]))} already matched the current state.`,
+      );
+    }
+
+    if (ignoredFields.length > 0) {
+      contentParts.push(
+        `Ignored ${formatNaturalList(ignoredFields)}; use document tools for markdown-based content.`,
+      );
+    }
 
     return {
-      activeNode,
-      activeNodeDraftState: draftState,
-      content: missingFields
-        ? `Saved a partial draft for "${activeNode}". Still missing: ${missingFields}.`
-        : `Saved a partial draft for "${activeNode}".`,
-      draft,
-      nextAction: 'ask',
+      content: contentParts.join(' '),
+      ignoredFields,
+      savedFields,
       success: true,
-    };
-  };
-
-  private ensurePersistedState = async () => {
-    const userState = await this.getUserState();
-
-    return this.ensureState(userState.agentOnboarding);
-  };
-
-  private commitActiveStep = async (
-    state: UserAgentOnboarding,
-    activeNode: UserAgentOnboardingNode,
-  ): Promise<CommitStepResult> => {
-    const draft = state.draft ?? {};
-
-    if (activeNode === 'summary') {
-      return {
-        content: 'Use finishOnboarding from the summary step.',
-        control: buildOnboardingControl({ activeNode }),
-        success: false,
-      };
-    }
-
-    const handler = NODE_HANDLERS[activeNode];
-
-    if (!handler) {
-      return {
-        content: `Unknown node "${activeNode}".`,
-        control: buildOnboardingControl({ activeNode }),
-        success: false,
-      };
-    }
-
-    const commitResult = handler.commitToState(state, draft);
-
-    if (!commitResult.success) {
-      return {
-        content: commitResult.errorMessage ?? `${activeNode} has not been captured yet.`,
-        control: buildOnboardingControl({
-          activeNode,
-          activeNodeDraftState: getNodeDraftState(activeNode, draft),
-        }),
-        success: false,
-      };
-    }
-
-    if (commitResult.sideEffects?.updateUserName) {
-      await this.userModel.updateUser({ fullName: commitResult.sideEffects.updateUserName });
-    }
-    if (commitResult.sideEffects?.updateInterests) {
-      await this.userModel.updateUser({ interests: commitResult.sideEffects.updateInterests });
-    }
-    if (commitResult.sideEffects?.updateResponseLanguage) {
-      const currentSettings = await this.userModel.getUserSettings();
-      await this.userModel.updateSetting({
-        general: merge(currentSettings?.general || {}, {
-          responseLanguage: commitResult.sideEffects.updateResponseLanguage,
-        }),
-      });
-    }
-
-    const nextNode = getNextNode(activeNode);
-    const completedNodes = dedupeNodes([...(state.completedNodes ?? []), activeNode]);
-    const nextDraft = { ...draft };
-    delete nextDraft[handler.draftKey as keyof typeof nextDraft];
-
-    await this.saveState({
-      ...state,
-      completedNodes,
-      draft: nextDraft,
-    });
-
-    const nextContext = await this.getState();
-
-    return {
-      content: nextNode
-        ? `Committed step "${activeNode}". Continue with "${nextNode}".`
-        : `Committed step "${activeNode}".`,
-      control: nextContext.control,
-      success: true,
-    };
-  };
-
-  completeCurrentStep = async (node: UserAgentOnboardingNode) => {
-    const state = await this.ensurePersistedState();
-    const activeNode = getActiveNode(state);
-
-    if (!activeNode) {
-      return {
-        content: 'Onboarding is already complete.',
-        control: buildOnboardingControl({
-          activeNode,
-          activeNodeDraftState: undefined,
-        }),
-        success: false,
-      };
-    }
-
-    if (node !== activeNode) {
-      return {
-        activeNode,
-        activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
-        content: `Active onboarding step is "${activeNode}", not "${node}".`,
-        control: buildOnboardingControl({
-          activeNode,
-          activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
-        }),
-        success: false,
-      };
-    }
-
-    const draftState = getNodeDraftState(activeNode, state.draft ?? {});
-
-    if (activeNode !== 'summary' && draftState?.status !== 'complete') {
-      return {
-        activeNode,
-        activeNodeDraftState: draftState,
-        content: `Active onboarding step "${activeNode}" is still incomplete.`,
-        control: buildOnboardingControl({
-          activeNode,
-          activeNodeDraftState: draftState,
-        }),
-        success: false,
-      };
-    }
-
-    return this.commitActiveStep(state, activeNode);
-  };
-
-  returnToOnboarding = async (reason?: string) => {
-    const state = await this.ensurePersistedState();
-    const activeNode = getActiveNode(state);
-    const draft = state.draft ?? {};
-
-    return {
-      activeNode,
-      content: reason
-        ? `Stay on onboarding. Off-topic reason: ${reason}`
-        : 'Stay on onboarding and continue with the current question.',
-      control: buildOnboardingControl({
-        activeNode,
-        activeNodeDraftState: getNodeDraftState(activeNode, draft),
-      }),
-      success: true,
+      unchangedFields,
     };
   };
 
@@ -738,28 +463,18 @@ export class OnboardingService {
   };
 
   finishOnboarding = async () => {
-    const state = await this.ensurePersistedState();
+    const state = this.ensureState((await this.getUserState()).agentOnboarding);
+    const inboxAgentId = await this.getInboxAgentId();
 
     if (state.finishedAt) {
       await this.safeTransferToInbox(state.activeTopicId);
 
       return {
+        agentId: inboxAgentId,
         content: 'Agent onboarding already completed.',
         finishedAt: state.finishedAt,
         success: true,
-      };
-    }
-
-    const activeNode = getActiveNode(state);
-
-    if (activeNode !== 'summary') {
-      return {
-        content: `Active onboarding step is "${activeNode ?? 'completed'}". Finish is only allowed in "summary".`,
-        control: buildOnboardingControl({
-          activeNode,
-          activeNodeDraftState: getNodeDraftState(activeNode, state.draft ?? {}),
-        }),
-        success: false,
+        topicId: state.activeTopicId,
       };
     }
 
@@ -768,8 +483,6 @@ export class OnboardingService {
     await this.userModel.updateUser({
       agentOnboarding: {
         ...state,
-        completedNodes: dedupeNodes([...(state.completedNodes ?? []), 'summary']),
-        draft: {},
         finishedAt,
         version: CURRENT_ONBOARDING_VERSION,
       },
@@ -783,19 +496,52 @@ export class OnboardingService {
     await this.safeTransferToInbox(state.activeTopicId);
 
     return {
+      agentId: inboxAgentId,
       content: 'Agent onboarding completed successfully.',
       finishedAt,
       success: true,
+      topicId: state.activeTopicId,
     };
   };
 
   reset = async () => {
     const state = defaultAgentOnboardingState();
 
-    await this.userModel.updateUser({ agentOnboarding: state });
+    await this.userModel.updateUser({
+      agentOnboarding: state,
+      fullName: null,
+      interests: [],
+    });
+
+    // Reset responseLanguage in user settings
+    try {
+      const currentSettings = await this.userModel.getUserSettings();
+      await this.userModel.updateSetting({
+        general: merge(currentSettings?.general || {}, {
+          responseLanguage: null,
+        }),
+      });
+    } catch (error) {
+      console.error('[OnboardingService] Failed to reset responseLanguage:', error);
+    }
+
+    // Reset persona documents
+    try {
+      await this.db
+        .delete(userPersonaDocumentHistories)
+        .where(eq(userPersonaDocumentHistories.userId, this.userId));
+      await this.db
+        .delete(userPersonaDocuments)
+        .where(eq(userPersonaDocuments.userId, this.userId));
+    } catch (error) {
+      console.error('[OnboardingService] Failed to reset persona documents:', error);
+    }
 
     try {
       const inboxAgentId = await this.getInboxAgentId();
+
+      // Reset inbox agent title and avatar
+      await this.agentModel.update(inboxAgentId, { avatar: null, title: null });
 
       await this.agentDocumentsService.deleteTemplateDocuments(inboxAgentId, 'claw');
       this.inboxDocumentsInitialized = false;

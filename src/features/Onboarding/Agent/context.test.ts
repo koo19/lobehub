@@ -3,64 +3,43 @@ import { describe, expect, it } from 'vitest';
 import { resolveAgentOnboardingContext } from './context';
 
 describe('resolveAgentOnboardingContext', () => {
-  it('prefers bootstrap onboarding topic over stored onboarding state', () => {
+  it('prefers the bootstrap topic id when available', () => {
     const result = resolveAgentOnboardingContext({
       bootstrapContext: {
         agentOnboarding: {
           activeTopicId: 'topic-bootstrap',
-          completedNodes: ['agentIdentity'],
           version: 1,
         },
-        context: {},
+        context: {
+          finished: false,
+          missingStructuredFields: ['interests'],
+          phase: 'discovery',
+          topicId: 'topic-bootstrap',
+          version: 1,
+        },
         topicId: 'topic-bootstrap',
       },
       storedAgentOnboarding: {
         activeTopicId: 'topic-store',
-        completedNodes: ['agentIdentity'],
         version: 1,
       },
     });
 
     expect(result).toEqual({
-      activeNode: 'userIdentity',
       topicId: 'topic-bootstrap',
     });
   });
 
-  it('falls back per field when stored onboarding state is partial', () => {
+  it('falls back to the stored onboarding topic id when bootstrap data is absent', () => {
     const result = resolveAgentOnboardingContext({
-      bootstrapContext: {
-        agentOnboarding: {
-          activeTopicId: 'topic-bootstrap',
-          completedNodes: ['agentIdentity', 'userIdentity'],
-          version: 1,
-        },
-        context: {},
-        topicId: 'topic-bootstrap',
-      },
       storedAgentOnboarding: {
-        completedNodes: ['agentIdentity', 'userIdentity'],
+        activeTopicId: 'topic-store',
         version: 1,
       },
     });
 
     expect(result).toEqual({
-      activeNode: 'workStyle',
-      topicId: 'topic-bootstrap',
-    });
-  });
-
-  it('resolves activeNode from stored state', () => {
-    const result = resolveAgentOnboardingContext({
-      storedAgentOnboarding: {
-        completedNodes: ['agentIdentity'],
-        version: 1,
-      },
-    });
-
-    expect(result).toEqual({
-      activeNode: 'userIdentity',
-      topicId: undefined,
+      topicId: 'topic-store',
     });
   });
 });

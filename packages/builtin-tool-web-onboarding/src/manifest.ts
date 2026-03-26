@@ -7,7 +7,7 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
   api: [
     {
       description:
-        'Read the current onboarding state, including the active step, committed values, saved draft, any currently stored question surface, and lightweight control metadata.',
+        'Read a lightweight onboarding summary. This is advisory context for what is still useful to ask, not a strict step-machine payload.',
       name: WebOnboardingApiName.getOnboardingState,
       parameters: {
         properties: {},
@@ -17,77 +17,38 @@ export const WebOnboardingManifest: BuiltinToolManifest = {
     },
     {
       description:
-        'Save one or more structured answers from the user. patch is node-scoped and may be partial: because node is already provided, send only that node’s fields. Use batch updates when the user clearly answered multiple consecutive onboarding steps in one turn.',
-      name: WebOnboardingApiName.saveAnswer,
+        'Persist structured onboarding fields. Use for agentName and agentEmoji (updates inbox agent title/avatar), fullName, interests, and responseLanguage.',
+      name: WebOnboardingApiName.saveUserQuestion,
       parameters: {
+        additionalProperties: false,
         properties: {
-          updates: {
+          agentEmoji: {
+            description: 'Emoji avatar for the agent (updates inbox agent avatar).',
+            type: 'string',
+          },
+          agentName: {
+            description: 'Name for the agent (updates inbox agent title).',
+            type: 'string',
+          },
+          fullName: {
+            type: 'string',
+          },
+          interests: {
             items: {
-              properties: {
-                node: {
-                  enum: [
-                    'agentIdentity',
-                    'userIdentity',
-                    'workStyle',
-                    'workContext',
-                    'painPoints',
-                    'responseLanguage',
-                    'summary',
-                  ],
-                  type: 'string',
-                },
-                patch: {
-                  additionalProperties: true,
-                  type: 'object',
-                },
-              },
-              required: ['node', 'patch'],
-              type: 'object',
+              type: 'string',
             },
             type: 'array',
           },
-        },
-        required: ['updates'],
-        type: 'object',
-      },
-    },
-    {
-      description:
-        'Complete the active onboarding step after the user has provided a reliable or confirmed answer.',
-      name: WebOnboardingApiName.completeCurrentStep,
-      parameters: {
-        properties: {
-          node: {
-            enum: [
-              'agentIdentity',
-              'userIdentity',
-              'workStyle',
-              'workContext',
-              'painPoints',
-              'responseLanguage',
-              'summary',
-            ],
+          responseLanguage: {
             type: 'string',
           },
         },
-        required: ['node'],
         type: 'object',
       },
     },
     {
       description:
-        'Record an off-topic turn and bring the conversation back to the active onboarding question.',
-      name: WebOnboardingApiName.returnToOnboarding,
-      parameters: {
-        properties: {
-          reason: { type: 'string' },
-        },
-        type: 'object',
-      },
-    },
-    {
-      description:
-        'Finish the onboarding flow from the summary step and mirror the legacy onboarding completion flag.',
+        'Finish onboarding once the summary is confirmed and the user is ready to proceed.',
       name: WebOnboardingApiName.finishOnboarding,
       parameters: {
         properties: {},

@@ -6,9 +6,8 @@ import {
 } from '@lobechat/types';
 import {
   Plans,
-  UserAgentOnboardingNodeSchema,
+  SaveUserQuestionInputSchema,
   UserAgentOnboardingSchema,
-  UserAgentOnboardingUpdateSchema,
   UserGuideSchema,
   UserOnboardingSchema,
   UserPreferenceSchema,
@@ -30,6 +29,7 @@ import { FileS3 } from '@/server/modules/S3';
 import { AgentDocumentsService } from '@/server/services/agentDocuments';
 import { FileService } from '@/server/services/file';
 import { OnboardingService } from '@/server/services/onboarding';
+import { EMPTY_DOCUMENT_MESSAGES } from '@/utils/webOnboardingToolResult';
 
 const usernameSchema = z
   .string()
@@ -207,40 +207,12 @@ export const userRouter = router({
     return onboardingService.getState();
   }),
 
-  saveOnboardingAnswer: userProcedure
-    .input(
-      z.object({
-        updates: z.array(UserAgentOnboardingUpdateSchema).min(1),
-      }),
-    )
+  saveUserQuestion: userProcedure
+    .input(SaveUserQuestionInputSchema)
     .mutation(async ({ ctx, input }) => {
       const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
 
-      return onboardingService.saveAnswer(input);
-    }),
-
-  completeOnboardingStep: userProcedure
-    .input(
-      z.object({
-        node: UserAgentOnboardingNodeSchema,
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
-
-      return onboardingService.completeCurrentStep(input.node);
-    }),
-
-  returnToOnboarding: userProcedure
-    .input(
-      z.object({
-        reason: z.string().optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const onboardingService = new OnboardingService(ctx.serverDB, ctx.userId);
-
-      return onboardingService.returnToOnboarding(input.reason);
+      return onboardingService.saveUserQuestion(input);
     }),
 
   finishOnboarding: userProcedure.input(z.object({})).mutation(async ({ ctx, input }) => {
@@ -259,14 +231,22 @@ export const userRouter = router({
         const inboxAgentId = await onboardingService.getInboxAgentId();
         const doc = await docService.getDocumentByFilename(inboxAgentId, 'SOUL.md');
 
-        return { content: doc?.content || '', id: doc?.id, type: 'soul' as const };
+        return {
+          content: doc?.content || EMPTY_DOCUMENT_MESSAGES.soul,
+          id: doc?.id ?? null,
+          type: 'soul' as const,
+        };
       }
 
       const { UserPersonaModel } = await import('@/database/models/userMemory/persona');
       const personaModel = new UserPersonaModel(ctx.serverDB, ctx.userId);
       const persona = await personaModel.getLatestPersonaDocument();
 
-      return { content: persona?.persona || '', id: persona?.id, type: 'persona' as const };
+      return {
+        content: persona?.persona || EMPTY_DOCUMENT_MESSAGES.persona,
+        id: persona?.id ?? null,
+        type: 'persona' as const,
+      };
     }),
 
   updateOnboardingDocument: userProcedure

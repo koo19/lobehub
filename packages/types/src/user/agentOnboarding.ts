@@ -1,5 +1,18 @@
 import { z } from 'zod';
 
+export const SAVE_USER_QUESTION_FIELDS = [
+  'agentEmoji',
+  'agentName',
+  'fullName',
+  'interests',
+  'responseLanguage',
+] as const;
+
+export const AGENT_ONBOARDING_STRUCTURED_FIELDS = SAVE_USER_QUESTION_FIELDS;
+
+export type SaveUserQuestionField = (typeof SAVE_USER_QUESTION_FIELDS)[number];
+export type AgentOnboardingStructuredField = SaveUserQuestionField;
+
 export const AGENT_ONBOARDING_NODES = [
   'agentIdentity',
   'userIdentity',
@@ -12,9 +25,12 @@ export const AGENT_ONBOARDING_NODES = [
 
 export type UserAgentOnboardingNode = (typeof AGENT_ONBOARDING_NODES)[number];
 
-export interface UserAgentOnboardingUpdate {
-  node: UserAgentOnboardingNode;
-  patch: Record<string, unknown>;
+export interface SaveUserQuestionInput {
+  agentEmoji?: string;
+  agentName?: string;
+  fullName?: string;
+  interests?: string[];
+  responseLanguage?: string;
 }
 
 export interface UserOnboardingAgentIdentity {
@@ -111,26 +127,35 @@ export interface UserAgentOnboardingQuestion extends UserAgentOnboardingQuestion
   node: UserAgentOnboardingNode;
 }
 
-export interface UserAgentOnboardingControl {
-  allowedTools: string[];
-  canCompleteCurrentStep: boolean;
-  canFinish: boolean;
-  missingFields: string[];
-}
+export const ONBOARDING_PHASES = [
+  'agent_identity',
+  'user_identity',
+  'discovery',
+  'summary',
+] as const;
+
+export type OnboardingPhase = (typeof ONBOARDING_PHASES)[number];
 
 export interface UserAgentOnboardingContext {
-  activeNode?: UserAgentOnboardingNode;
-  activeNodeDraftState?: {
-    missingFields?: string[];
-    status: 'complete' | 'empty' | 'partial';
-  };
-  committed: Record<string, unknown>;
-  completedNodes: UserAgentOnboardingNode[];
-  control: UserAgentOnboardingControl;
-  draft: UserAgentOnboardingDraft;
-  finishedAt?: string;
+  finished: boolean;
+  missingStructuredFields: SaveUserQuestionField[];
+  phase: OnboardingPhase;
   topicId?: string;
   version: number;
+}
+
+export interface UserAgentOnboarding {
+  activeTopicId?: string;
+  agentIdentity?: UserOnboardingAgentIdentity;
+  draft?: UserAgentOnboardingDraft;
+  finishedAt?: string;
+  profile?: UserOnboardingProfile;
+  version: number;
+}
+
+export interface UserAgentOnboardingUpdate {
+  node: UserAgentOnboardingNode;
+  patch: Record<string, unknown>;
 }
 
 export interface UserAgentOnboardingDraft {
@@ -142,132 +167,45 @@ export interface UserAgentOnboardingDraft {
   workStyle?: Partial<UserOnboardingDimensionWorkStyle>;
 }
 
-export interface UserAgentOnboarding {
-  activeTopicId?: string;
-  agentIdentity?: UserOnboardingAgentIdentity;
-  completedNodes?: UserAgentOnboardingNode[];
-  draft?: UserAgentOnboardingDraft;
-  finishedAt?: string;
-  profile?: UserOnboardingProfile;
-  version: number;
-}
+const TrimmedNonEmptyStringSchema = z.string().trim().min(1);
 
+export const SaveUserQuestionFieldSchema = z.enum(SAVE_USER_QUESTION_FIELDS);
+export const AgentOnboardingStructuredFieldSchema = SaveUserQuestionFieldSchema;
 export const UserAgentOnboardingNodeSchema = z.enum(AGENT_ONBOARDING_NODES);
 
-export const UserAgentOnboardingUpdateSchema = z.object({
-  node: UserAgentOnboardingNodeSchema,
-  patch: z.object({}).passthrough(),
-});
+export const SaveUserQuestionInputSchema = z
+  .object({
+    agentEmoji: TrimmedNonEmptyStringSchema.optional(),
+    agentName: TrimmedNonEmptyStringSchema.optional(),
+    fullName: TrimmedNonEmptyStringSchema.optional(),
+    interests: z.array(TrimmedNonEmptyStringSchema).optional(),
+    responseLanguage: TrimmedNonEmptyStringSchema.optional(),
+  })
+  .strict();
 
-const UserOnboardingAgentIdentitySchema = z.object({
-  emoji: z.string(),
-  name: z.string(),
-  nature: z.string(),
-  vibe: z.string(),
-});
+export const OnboardingPhaseSchema = z.enum(ONBOARDING_PHASES);
 
-const UserOnboardingDimensionIdentitySchema = z.object({
-  domainExpertise: z.string().optional(),
-  name: z.string().optional(),
-  professionalRole: z.string().optional(),
-  summary: z.string(),
-});
+export const UserAgentOnboardingContextSchema = z
+  .object({
+    finished: z.boolean(),
+    missingStructuredFields: z.array(SaveUserQuestionFieldSchema),
+    phase: OnboardingPhaseSchema,
+    topicId: z.string().optional(),
+    version: z.number(),
+  })
+  .strict();
 
-const UserOnboardingDimensionWorkStyleSchema = z.object({
-  communicationStyle: z.string().optional(),
-  decisionMaking: z.string().optional(),
-  socialMode: z.string().optional(),
-  summary: z.string(),
-  thinkingPreferences: z.string().optional(),
-  workStyle: z.string().optional(),
-});
+export const UserAgentOnboardingSchema = z
+  .object({
+    activeTopicId: z.string().optional(),
+    finishedAt: z.string().optional(),
+    version: z.number(),
+  })
+  .strict();
 
-const UserOnboardingDimensionWorkContextSchema = z.object({
-  activeProjects: z.array(z.string()).optional(),
-  currentFocus: z.string().optional(),
-  interests: z.array(z.string()).optional(),
-  summary: z.string(),
-  thisQuarter: z.string().optional(),
-  thisWeek: z.string().optional(),
-  tools: z.array(z.string()).optional(),
-});
-
-const UserOnboardingDimensionPainPointsSchema = z.object({
-  blockedBy: z.array(z.string()).optional(),
-  frustrations: z.array(z.string()).optional(),
-  noTimeFor: z.array(z.string()).optional(),
-  summary: z.string(),
-});
-
-const UserAgentOnboardingQuestionFieldOptionSchema = z.object({
-  label: z.string(),
-  value: z.string(),
-});
-
-const UserAgentOnboardingQuestionFieldSchema = z.object({
-  key: z.string(),
-  kind: z.enum(['emoji', 'multiselect', 'select', 'text', 'textarea']),
-  label: z.string(),
-  options: z.array(UserAgentOnboardingQuestionFieldOptionSchema).optional(),
-  placeholder: z.string().optional(),
-  required: z.boolean().optional(),
-  value: z.union([z.string(), z.array(z.string())]).optional(),
-});
-
-const UserAgentOnboardingQuestionChoicePayloadSchema = z.object({
-  kind: z.enum(['message', 'patch']),
-  message: z.string().optional(),
-  patch: z.record(z.string(), z.unknown()).optional(),
-  targetNode: UserAgentOnboardingNodeSchema.optional(),
-});
-
-const UserAgentOnboardingQuestionChoiceSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  payload: UserAgentOnboardingQuestionChoicePayloadSchema.optional(),
-  style: z.enum(['danger', 'default', 'primary']).optional(),
-});
-
-export const UserAgentOnboardingQuestionDraftSchema = z.object({
-  choices: z.array(UserAgentOnboardingQuestionChoiceSchema).optional(),
-  description: z.string().optional(),
-  fields: z.array(UserAgentOnboardingQuestionFieldSchema).optional(),
-  id: z.string(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  mode: z.enum(['button_group', 'composer_prefill', 'form', 'info', 'select']),
-  priority: z.enum(['primary', 'secondary']).optional(),
-  prompt: z.string(),
-  submitMode: z.enum(['message', 'tool']).optional(),
-});
-
-const UserAgentOnboardingQuestionSchema = UserAgentOnboardingQuestionDraftSchema.extend({
-  node: UserAgentOnboardingNodeSchema,
-});
-
-export const UserAgentOnboardingDraftSchema = z.object({
-  agentIdentity: UserOnboardingAgentIdentitySchema.partial().optional(),
-  painPoints: UserOnboardingDimensionPainPointsSchema.partial().optional(),
-  responseLanguage: z.string().optional(),
-  userIdentity: UserOnboardingDimensionIdentitySchema.partial().optional(),
-  workContext: UserOnboardingDimensionWorkContextSchema.partial().optional(),
-  workStyle: UserOnboardingDimensionWorkStyleSchema.partial().optional(),
-});
-
-export const UserAgentOnboardingSchema = z.object({
-  activeTopicId: z.string().optional(),
-  agentIdentity: UserOnboardingAgentIdentitySchema.optional(),
-  completedNodes: z.array(UserAgentOnboardingNodeSchema).optional(),
-  draft: UserAgentOnboardingDraftSchema.optional(),
-  finishedAt: z.string().optional(),
-  profile: z
-    .object({
-      currentFocus: z.string().optional(),
-      identity: UserOnboardingDimensionIdentitySchema.optional(),
-      interests: z.array(z.string()).optional(),
-      painPoints: UserOnboardingDimensionPainPointsSchema.optional(),
-      workContext: UserOnboardingDimensionWorkContextSchema.optional(),
-      workStyle: UserOnboardingDimensionWorkStyleSchema.optional(),
-    })
-    .optional(),
-  version: z.number(),
-});
+export const UserAgentOnboardingUpdateSchema = z
+  .object({
+    node: UserAgentOnboardingNodeSchema,
+    patch: z.object({}).passthrough(),
+  })
+  .strict();

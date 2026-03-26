@@ -2,11 +2,10 @@ import { type PartialDeep } from 'type-fest';
 
 import { lambdaClient } from '@/libs/trpc/client';
 import {
+  type SaveUserQuestionInput,
   type SSOProvider,
   type UserAgentOnboarding,
   type UserAgentOnboardingContext,
-  type UserAgentOnboardingNode,
-  type UserAgentOnboardingUpdate,
   type UserGuide,
   type UserInitializationState,
   type UserOnboarding,
@@ -44,18 +43,10 @@ export class UserService {
     return lambdaClient.user.getOnboardingState.query();
   };
 
-  saveOnboardingAnswer = async (params: { updates: UserAgentOnboardingUpdate[] }) => {
-    return lambdaClient.user.saveOnboardingAnswer.mutate(
-      params as Parameters<typeof lambdaClient.user.saveOnboardingAnswer.mutate>[0],
+  saveUserQuestion = async (params: SaveUserQuestionInput) => {
+    return lambdaClient.user.saveUserQuestion.mutate(
+      params as Parameters<typeof lambdaClient.user.saveUserQuestion.mutate>[0],
     );
-  };
-
-  completeOnboardingStep = async (node: UserAgentOnboardingNode) => {
-    return lambdaClient.user.completeOnboardingStep.mutate({ node });
-  };
-
-  returnToOnboarding = async (reason?: string) => {
-    return lambdaClient.user.returnToOnboarding.mutate({ reason });
   };
 
   finishOnboarding = async () => {

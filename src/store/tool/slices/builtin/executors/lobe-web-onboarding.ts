@@ -2,13 +2,19 @@ import {
   WebOnboardingApiName,
   WebOnboardingIdentifier,
 } from '@lobechat/builtin-tool-web-onboarding';
+import { SESSION_CHAT_URL } from '@lobechat/const';
 import { type BuiltinToolContext, type BuiltinToolResult } from '@lobechat/types';
 import { BaseExecutor } from '@lobechat/types';
 
 import { userService } from '@/services/user';
 import { useUserStore } from '@/store/user';
+import { isDev } from '@/utils/env';
 
-import { createWebOnboardingToolResult } from '../../../../../utils/webOnboardingToolResult';
+import {
+  createDocumentReadResult,
+  createWebOnboardingToolResult,
+  formatWebOnboardingStateMessage,
+} from '../../../../../utils/webOnboardingToolResult';
 
 const syncUserOnboardingState = async () => {
   try {
@@ -26,41 +32,17 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     const result = await userService.getOnboardingState();
 
     return {
-      content: JSON.stringify(result, null, 2),
+      content: formatWebOnboardingStateMessage(result),
       state: result,
       success: true,
     };
   };
 
-  saveAnswer = async (
-    params: {
-      updates: Parameters<typeof userService.saveOnboardingAnswer>[0]['updates'];
-    },
+  saveUserQuestion = async (
+    params: Parameters<typeof userService.saveUserQuestion>[0],
     _ctx: BuiltinToolContext,
   ): Promise<BuiltinToolResult> => {
-    const result = await userService.saveOnboardingAnswer(params);
-    await syncUserOnboardingState();
-
-    return createWebOnboardingToolResult(result);
-  };
-
-  completeCurrentStep = async (
-    params: {
-      node: Parameters<typeof userService.completeOnboardingStep>[0];
-    },
-    _ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> => {
-    const result = await userService.completeOnboardingStep(params.node);
-    await syncUserOnboardingState();
-
-    return createWebOnboardingToolResult(result);
-  };
-
-  returnToOnboarding = async (
-    params: { reason?: string },
-    _ctx: BuiltinToolContext,
-  ): Promise<BuiltinToolResult> => {
-    const result = await userService.returnToOnboarding(params.reason);
+    const result = await userService.saveUserQuestion(params);
     await syncUserOnboardingState();
 
     return createWebOnboardingToolResult(result);
@@ -70,17 +52,23 @@ class WebOnboardingExecutor extends BaseExecutor<typeof WebOnboardingApiName> {
     const result = await userService.finishOnboarding();
     await syncUserOnboardingState();
 
+    if (result.success && result.agentId && result.topicId) {
+      const targetPath = `${SESSION_CHAT_URL(result.agentId)}?topic=${result.topicId}`;
+
+      if (isDev) {
+        console.info('[webOnboardingExecutor] finishOnboarding target:', targetPath);
+      } else {
+        window.location.assign(targetPath);
+      }
+    }
+
     return createWebOnboardingToolResult(result);
   };
 
   readDocument = async (params: { type: 'soul' | 'persona' }): Promise<BuiltinToolResult> => {
     const result = await userService.readOnboardingDocument(params.type);
 
-    return {
-      content: result.content || '',
-      state: { content: result.content, id: result.id, type: params.type },
-      success: true,
-    };
+    return createDocumentReadResult(params.type, result.content, result.id);
   };
 
   updateDocument = async (

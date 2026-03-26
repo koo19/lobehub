@@ -21,7 +21,6 @@ import { topicReferenceRuntime } from './topicReference';
 import { type ServerRuntimeFactory, type ServerRuntimeRegistration } from './types';
 import { userInteractionRuntime } from './userInteraction';
 import { webBrowsingRuntime } from './webBrowsing';
-import { webOnboardingRuntime } from './webOnboarding';
 
 /**
  * Registry of server runtime factories by identifier
@@ -52,7 +51,6 @@ registerRuntimes([
   remoteDeviceRuntime,
   topicReferenceRuntime,
   userInteractionRuntime,
-  webOnboardingRuntime,
 ]);
 
 // ==================== Registry API ====================

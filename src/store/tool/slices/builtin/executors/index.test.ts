@@ -11,13 +11,7 @@ describe('builtin executor registry', () => {
     expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.getOnboardingState)).toBe(
       true,
     );
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.saveAnswer)).toBe(true);
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.completeCurrentStep)).toBe(
-      true,
-    );
-    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.returnToOnboarding)).toBe(
-      true,
-    );
+    expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.saveUserQuestion)).toBe(true);
     expect(hasExecutor(WebOnboardingIdentifier, WebOnboardingApiName.finishOnboarding)).toBe(true);
     expect(getApiNamesForIdentifier(WebOnboardingIdentifier)).toEqual(
       Object.values(WebOnboardingApiName),

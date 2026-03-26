@@ -1,57 +1,37 @@
 import { describe, expect, it } from 'vitest';
 
-import { createWebOnboardingToolResult } from './webOnboardingToolResult';
+import {
+  createWebOnboardingToolResult,
+  formatWebOnboardingStateMessage,
+} from './webOnboardingToolResult';
 
-describe('createWebOnboardingToolResult', () => {
-  it('wraps failed onboarding actions into structured tool output', () => {
+describe('web onboarding tool result helpers', () => {
+  it('keeps tool action content message-first', () => {
     const result = createWebOnboardingToolResult({
-      content: 'Agent identity is incomplete.',
-      error: {
-        message: 'Agent identity is incomplete.',
-        type: 'INVALID_PATCH',
-      },
-      success: false,
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toEqual({
-      body: {
-        content: 'Agent identity is incomplete.',
-        error: {
-          message: 'Agent identity is incomplete.',
-          type: 'INVALID_PATCH',
-        },
-        success: false,
-      },
-      message: 'Agent identity is incomplete.',
-      type: 'INVALID_PATCH',
-    });
-    expect(result.state).toEqual({
-      data: {
-        content: 'Agent identity is incomplete.',
-        error: {
-          message: 'Agent identity is incomplete.',
-          type: 'INVALID_PATCH',
-        },
-        success: false,
-      },
-      error: {
-        message: 'Agent identity is incomplete.',
-        type: 'INVALID_PATCH',
-      },
-      isError: true,
-      success: false,
-    });
-    expect(JSON.parse(result.content!)).toEqual(result.state);
-  });
-
-  it('serializes successful onboarding actions as structured payload only', () => {
-    const result = createWebOnboardingToolResult({
-      content: 'Committed step "agentIdentity". Continue with "userIdentity".',
+      content: 'Saved interests and response language.',
+      savedFields: ['interests', 'responseLanguage'],
       success: true,
     });
 
-    expect(result.content).toBe(JSON.stringify(result.state, null, 2));
-    expect(result.content).not.toContain('toolDirective');
+    expect(result.content).toBe('Saved interests and response language.');
+    expect(result.state).toEqual({
+      isError: false,
+      savedFields: ['interests', 'responseLanguage'],
+      success: true,
+    });
+    expect(result.content.trim().startsWith('{')).toBe(false);
+  });
+
+  it('formats onboarding state as a plain-language summary', () => {
+    const message = formatWebOnboardingStateMessage({
+      finished: false,
+      missingStructuredFields: ['interests'],
+      phase: 'discovery',
+      topicId: 'topic-1',
+      version: 1,
+    });
+
+    expect(message).toContain('Structured fields still needed: interests.');
+    expect(message).toContain('Phase: Discovery');
   });
 });

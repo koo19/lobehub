@@ -130,10 +130,7 @@ const AgentOnboardingPage = memo(() => {
             }}
           >
             <ErrorBoundary FallbackComponent={() => null}>
-              <AgentOnboardingConversation
-                activeNode={viewingHistoricalTopic ? undefined : currentContext.activeNode}
-                readOnly={viewingHistoricalTopic}
-              />
+              <AgentOnboardingConversation readOnly={viewingHistoricalTopic} />
             </ErrorBoundary>
           </OnboardingConversationProvider>
           {isDev && historyTopics.length > 0 && (

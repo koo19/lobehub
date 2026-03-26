@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,16 +6,12 @@ import type * as EnvModule from '@/utils/env';
 
 import AgentOnboardingConversation from './Conversation';
 
-const { chatInputSpy, finishOnboardingSpy, mockState, navigateSpy, refreshUserStateSpy } =
-  vi.hoisted(() => ({
-    chatInputSpy: vi.fn(),
-    finishOnboardingSpy: vi.fn(),
-    mockState: {
-      displayMessages: [] as Array<{ content?: string; id: string; role: string }>,
-    },
-    navigateSpy: vi.fn(),
-    refreshUserStateSpy: vi.fn(),
-  }));
+const { chatInputSpy, mockState } = vi.hoisted(() => ({
+  chatInputSpy: vi.fn(),
+  mockState: {
+    displayMessages: [] as Array<{ content?: string; id: string; role: string }>,
+  },
+}));
 
 vi.mock('@/utils/env', async (importOriginal) => {
   const actual = await importOriginal<typeof EnvModule>();
@@ -39,12 +35,7 @@ vi.mock('@/features/Conversation', () => ({
       ))}
     </div>
   ),
-  MessageItem: ({ endRender, id }: { endRender?: ReactNode; id: string }) => (
-    <div data-testid={`message-item-${id}`}>
-      <div>{id}</div>
-      {endRender}
-    </div>
-  ),
+  MessageItem: ({ id }: { id: string }) => <div data-testid={`message-item-${id}`}>{id}</div>,
   conversationSelectors: {
     displayMessages: (state: typeof mockState) => state.displayMessages,
   },
@@ -67,76 +58,34 @@ vi.mock('@/features/Conversation/hooks/useAgentMeta', () => ({
   }),
 }));
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
-
-vi.mock('react-router-dom', () => ({
-  useNavigate: () => navigateSpy,
-}));
-
-vi.mock('@/services/user', () => ({
-  userService: {
-    finishOnboarding: finishOnboardingSpy,
-  },
-}));
-
-vi.mock('@/store/user', () => ({
-  useUserStore: (selector: (state: { refreshUserState: typeof refreshUserStateSpy }) => unknown) =>
-    selector({
-      refreshUserState: refreshUserStateSpy,
-    }),
-}));
-
 describe('AgentOnboardingConversation', () => {
   beforeEach(() => {
     chatInputSpy.mockClear();
-    finishOnboardingSpy.mockReset();
     mockState.displayMessages = [];
-    navigateSpy.mockReset();
-    refreshUserStateSpy.mockReset();
   });
 
   it('renders a read-only transcript when viewing a historical topic', () => {
     mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
 
-    render(<AgentOnboardingConversation readOnly activeNode="agentIdentity" />);
+    render(<AgentOnboardingConversation readOnly />);
 
     expect(screen.queryByTestId('chat-input')).not.toBeInTheDocument();
     expect(screen.getByTestId('chat-list')).toBeInTheDocument();
   });
 
-  it('renders the completion CTA on the summary step', () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+  it('renders the onboarding greeting without any completion CTA', () => {
+    mockState.displayMessages = [{ content: 'Welcome', id: 'assistant-1', role: 'assistant' }];
 
-    render(<AgentOnboardingConversation activeNode="summary" />);
+    render(<AgentOnboardingConversation />);
 
-    expect(screen.getByText('finish')).toBeInTheDocument();
-    expect(screen.getByText('agent.summaryHint')).toBeInTheDocument();
-  });
-
-  it('finishes onboarding and navigates to inbox when the completion CTA is clicked', async () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
-    finishOnboardingSpy.mockResolvedValue({ success: true });
-    refreshUserStateSpy.mockResolvedValue(undefined);
-
-    render(<AgentOnboardingConversation activeNode="summary" />);
-
-    fireEvent.click(screen.getByText('finish'));
-
-    await waitFor(() => {
-      expect(finishOnboardingSpy).toHaveBeenCalledTimes(1);
-      expect(refreshUserStateSpy).toHaveBeenCalledTimes(1);
-      expect(navigateSpy).toHaveBeenCalledWith('/');
-    });
+    expect(screen.getByText('Welcome')).toBeInTheDocument();
+    expect(screen.queryByText('finish')).not.toBeInTheDocument();
   });
 
   it('disables expand and runtime config in chat input', () => {
     mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
 
-    render(<AgentOnboardingConversation activeNode="agentIdentity" />);
+    render(<AgentOnboardingConversation />);
 
     expect(chatInputSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -147,11 +96,16 @@ describe('AgentOnboardingConversation', () => {
     );
   });
 
-  it('does not show completion CTA when not on summary step', () => {
-    mockState.displayMessages = [{ id: 'assistant-1', role: 'assistant' }];
+  it('renders normal message items outside the greeting state', () => {
+    mockState.displayMessages = [
+      { id: 'assistant-1', role: 'assistant' },
+      { id: 'user-1', role: 'user' },
+      { id: 'assistant-2', role: 'assistant' },
+    ];
 
-    render(<AgentOnboardingConversation activeNode="agentIdentity" />);
+    render(<AgentOnboardingConversation />);
 
+    expect(screen.getByTestId('message-item-assistant-2')).toBeInTheDocument();
     expect(screen.queryByText('finish')).not.toBeInTheDocument();
   });
 });
