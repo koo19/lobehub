@@ -7,9 +7,13 @@ import type {
   UserAgentOnboarding,
   UserAgentOnboardingContext,
 } from '@lobechat/types';
-import { MAX_ONBOARDING_STEPS, SAVE_USER_QUESTION_FIELDS } from '@lobechat/types';
+import {
+  MAX_ONBOARDING_STEPS,
+  MIN_DISCOVERY_USER_MESSAGES,
+  SAVE_USER_QUESTION_FIELDS,
+} from '@lobechat/types';
 import { merge } from '@lobechat/utils';
-import { and, eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 
 import { AgentModel } from '@/database/models/agent';
 import { getDocumentTemplate } from '@/database/models/agentDocuments/templates';
@@ -266,20 +270,39 @@ export class OnboardingService {
     return missingFields;
   };
 
+  private countTopicUserMessages = async (topicId: string): Promise<number> => {
+    const result = await this.db
+      .select({ count: count(messages.id) })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.topicId, topicId),
+          eq(messages.userId, this.userId),
+          eq(messages.role, 'user'),
+        ),
+      );
+
+    return result[0]?.count ?? 0;
+  };
+
   private derivePhase = async (
     missingStructuredFields: SaveUserQuestionField[],
+    discoveryContext?: { currentUserMessageCount: number; startUserMessageCount: number },
   ): Promise<OnboardingPhase> => {
-    // Phase is derived purely from structured field state — no document sniffing.
-    // agentName/agentEmoji not saved → agent_identity
     if (missingStructuredFields.includes('agentName')) return 'agent_identity';
-    // fullName not saved → user_identity
     if (missingStructuredFields.includes('fullName')) return 'user_identity';
-    // interests or responseLanguage not saved → discovery
     if (
       missingStructuredFields.includes('interests') ||
       missingStructuredFields.includes('responseLanguage')
     )
       return 'discovery';
+
+    // All fields complete — check pacing gate
+    if (discoveryContext) {
+      const discoveryExchanges =
+        discoveryContext.currentUserMessageCount - discoveryContext.startUserMessageCount;
+      if (discoveryExchanges < MIN_DISCOVERY_USER_MESSAGES) return 'discovery';
+    }
 
     return 'summary';
   };
