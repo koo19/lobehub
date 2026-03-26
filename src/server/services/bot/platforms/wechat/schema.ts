@@ -2,8 +2,7 @@ import { DEFAULT_DEBOUNCE_MS, MAX_DEBOUNCE_MS } from '../const';
 import type { FieldSchema } from '../types';
 
 export const schema: FieldSchema[] = [
-  // No credentials fields — WeChat uses QR code auth flow (authFlow: 'qrcode').
-  // botToken, botId, and userId are populated automatically after QR scan.
+  // No credentials fields — credentials are populated automatically after QR scan.
   {
     key: 'settings',
     label: 'channel.settings',

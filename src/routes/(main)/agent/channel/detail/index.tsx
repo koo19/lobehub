@@ -291,25 +291,14 @@ const PlatformDetail = memo<PlatformDetailProps>(({ platformDef, agentId, curren
     connectCurrentBot,
   ]);
 
-  const handleQrAuthenticated = useCallback(
-    async (creds: { botId: string; botToken: string; userId: string }) => {
+  const handleExternalAuth = useCallback(
+    async (params: { applicationId: string; credentials: Record<string, string> }) => {
       setSaving(true);
       setSaveResult(undefined);
       setConnectResult(undefined);
 
       try {
-        const botToken = creds.botToken?.trim();
-
-        if (!creds.botId && !botToken) {
-          throw new Error('Bot Token is required');
-        }
-
-        const credentials = {
-          botId: creds.botId,
-          botToken: creds.botToken,
-          userId: creds.userId,
-        };
-        const applicationId = creds.botId || botToken?.slice(0, 16) || '';
+        const { applicationId, credentials } = params;
         const settings = form.getFieldValue('settings') || {};
 
         if (currentConfig) {
@@ -429,7 +418,7 @@ const PlatformDetail = memo<PlatformDetailProps>(({ platformDef, agentId, curren
         form={form}
         hasConfig={!!currentConfig}
         platformDef={platformDef}
-        onQrAuthenticated={platformDef.authFlow === 'qrcode' ? handleQrAuthenticated : undefined}
+        onAuthenticated={handleExternalAuth}
       />
       <Footer
         connectResult={connectResult}
