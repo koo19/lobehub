@@ -6,12 +6,13 @@ export const wechat: PlatformDefinition = {
   authFlow: 'qrcode',
   id: 'wechat',
   name: 'WeChat',
-  connectionMode: 'websocket',
+  connectionMode: 'persistent',
   description: 'Connect a WeChat bot via iLink API',
   documentation: {
     setupGuideUrl: 'https://lobehub.com/docs/usage/channels/wechat',
   },
   schema,
+  supportsMarkdown: false,
   supportsMessageEdit: false,
   clientFactory: new WechatClientFactory(),
 };

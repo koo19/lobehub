@@ -92,6 +92,7 @@ const formatErrorEventData = (error: unknown, phase: string) => {
 
 export interface RuntimeExecutorContext {
   agentConfig?: any;
+  botPlatformContext?: any;
   discordContext?: any;
   evalContext?: EvalContext;
   fileService?: any;
@@ -134,6 +135,7 @@ export const createRuntimeExecutors = (
 
     const stepDelta = buildStepToolDelta({
       activeDeviceId,
+      enabledToolIds: operationToolSet.enabledToolIds,
       forceFinish: state.forceFinish,
       localSystemManifest: LocalSystemManifest as unknown as LobeToolManifest,
       operationManifestMap: operationToolSet.manifestMap,
@@ -275,6 +277,7 @@ export const createRuntimeExecutors = (
               return info?.abilities?.vision ?? true;
             },
           },
+          botPlatformContext: ctx.botPlatformContext,
           discordContext: ctx.discordContext,
           enableHistoryCount: agentConfig.chatConfig?.enableHistoryCount ?? undefined,
           evalContext: ctx.evalContext,
@@ -975,8 +978,10 @@ export const createRuntimeExecutors = (
       log(`[${operationLogId}] Executing tool ${toolName} ...`);
       const executionResult = await toolExecutionService.executeTool(chatToolPayload, {
         activeDeviceId: state.metadata?.activeDeviceId,
+        agentId: state.metadata?.agentId,
         memoryToolPermission: agentConfig?.chatConfig?.memory?.toolPermission,
         serverDB: ctx.serverDB,
+        taskId: state.metadata?.taskId,
         toolManifestMap: effectiveManifestMap,
         toolResultMaxLength,
         topicId: ctx.topicId,
@@ -1191,8 +1196,10 @@ export const createRuntimeExecutors = (
 
           const executionResult = await toolExecutionService.executeTool(chatToolPayload, {
             activeDeviceId: state.metadata?.activeDeviceId,
+            agentId: state.metadata?.agentId,
             memoryToolPermission: batchAgentConfig?.chatConfig?.memory?.toolPermission,
             serverDB: ctx.serverDB,
+            taskId: state.metadata?.taskId,
             toolManifestMap: batchManifestMap,
             toolResultMaxLength: batchAgentConfig?.chatConfig?.toolResultMaxLength,
             topicId: ctx.topicId,

@@ -7,9 +7,17 @@ import { getAgentRuntimeRedisClient } from '@/server/modules/AgentRuntime/redis'
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import { SystemAgentService } from '@/server/services/systemAgent';
 
+import { AgentBridgeService } from './AgentBridgeService';
 import type { BotProviderConfig, PlatformClient, PlatformMessenger, UsageStats } from './platforms';
 import { platformRegistry } from './platforms';
-import { renderError, renderFinalReply, renderStepProgress, splitMessage } from './replyTemplate';
+import {
+  renderError,
+  renderFinalReply,
+  renderStepProgress,
+  renderStopped,
+  splitMessage,
+} from './replyTemplate';
+import { stopTypingKeepAlive } from './typingKeepAlive';
 
 const log = debug('lobe-server:bot:callback');
 
@@ -75,11 +83,11 @@ export class BotCallbackService {
     if (type === 'step') {
       if (canEdit && progressMessageId) {
         await this.handleStep(body, messenger, progressMessageId, client);
-      } else if (body.shouldContinue) {
-        // For platforms without progress messages (e.g. WeChat), still send typing indicator
-        await messenger.triggerTyping();
       }
     } else if (type === 'completion') {
+      // Stop typing keepalive before sending the final message
+      stopTypingKeepAlive(platformThreadId);
+
       await this.handleCompletion(
         body,
         messenger,
@@ -89,6 +97,10 @@ export class BotCallbackService {
         canEdit,
       );
       await this.removeEyesReaction(body, client, platformThreadId);
+      // Clear the active thread tracker so the thread can accept new messages.
+      // In queue mode, the bridge handler's finally block skips this cleanup
+      // to keep the thread marked active while the agent runs on the job queue.
+      AgentBridgeService.clearActiveThread(platformThreadId);
       this.summarizeTopicTitle(body, messenger);
     }
   }
@@ -172,7 +184,8 @@ export class BotCallbackService {
       totalTokens: body.totalTokens ?? 0,
     };
 
-    const progressText = client.formatReply?.(msgBody, stats) ?? msgBody;
+    const formatted = client.formatMarkdown?.(msgBody) ?? msgBody;
+    const progressText = client.formatReply?.(formatted, stats) ?? formatted;
 
     const isLlmFinalResponse =
       body.stepType === 'call_llm' && !body.toolsCalling?.length && body.content;
@@ -211,6 +224,16 @@ export class BotCallbackService {
       return;
     }
 
+    if (reason === 'interrupted') {
+      const stoppedText = renderStopped(errorMessage || 'Execution stopped.');
+      try {
+        await messenger.createMessage(stoppedText);
+      } catch (error) {
+        log('handleCompletion: failed to send interrupted message: %O', error);
+      }
+      return;
+    }
+
     if (!lastAssistantContent) {
       log('handleCompletion: no lastAssistantContent, skipping');
       return;
@@ -226,7 +249,8 @@ export class BotCallbackService {
       totalTokens: body.totalTokens ?? 0,
     };
 
-    const finalText = client.formatReply?.(msgBody, stats) ?? msgBody;
+    const formattedBody = client.formatMarkdown?.(msgBody) ?? msgBody;
+    const finalText = client.formatReply?.(formattedBody, stats) ?? formattedBody;
     const chunks = splitMessage(finalText, charLimit);
 
     try {
@@ -269,7 +293,16 @@ export class BotCallbackService {
 
   private summarizeTopicTitle(body: BotCallbackBody, messenger: PlatformMessenger): void {
     const { reason, topicId, userId, userPrompt, lastAssistantContent } = body;
-    if (reason === 'error' || !topicId || !userId || !userPrompt || !lastAssistantContent) return;
+    if (
+      reason === 'error' ||
+      reason === 'interrupted' ||
+      !topicId ||
+      !userId ||
+      !userPrompt ||
+      !lastAssistantContent
+    ) {
+      return;
+    }
 
     const topicModel = new TopicModel(this.db, userId);
     topicModel
