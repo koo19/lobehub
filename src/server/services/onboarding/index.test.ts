@@ -284,7 +284,7 @@ describe('OnboardingService', () => {
     });
   });
 
-  it('stays in discovery when all fields complete but discovery exchanges < 4', async () => {
+  it('stays in discovery when all fields complete but discovery exchanges < minimum', async () => {
     mockAgentModel.getBuiltinAgent.mockResolvedValue({
       avatar: '⚡',
       id: 'inbox-agent-1',
@@ -299,10 +299,10 @@ describe('OnboardingService', () => {
       version: CURRENT_ONBOARDING_VERSION,
     };
 
-    // 5 user messages total, baseline was 3 → only 2 discovery exchanges (< 4)
+    // 4 user messages total, baseline was 3 → only 1 discovery exchange (< MIN=2)
     mockDb.select.mockReturnValue({
       from: vi.fn(() => ({
-        where: vi.fn(async () => [{ count: 5 }]),
+        where: vi.fn(async () => [{ count: 4 }]),
       })),
     });
 
@@ -310,8 +310,8 @@ describe('OnboardingService', () => {
     const context = await service.getState();
 
     expect(context.phase).toBe('discovery');
-    expect(context.discoveryUserMessageCount).toBe(2);
-    expect(context.remainingDiscoveryExchanges).toBe(2);
+    expect(context.discoveryUserMessageCount).toBe(1);
+    expect(context.remainingDiscoveryExchanges).toBe(3);
   });
 
   it('advances to summary when discovery exchanges reach minimum threshold', async () => {
@@ -329,10 +329,10 @@ describe('OnboardingService', () => {
       version: CURRENT_ONBOARDING_VERSION,
     };
 
-    // 7 user messages total, baseline was 3 → 4 discovery exchanges (= MIN)
+    // 5 user messages total, baseline was 3 → 2 discovery exchanges (= MIN)
     mockDb.select.mockReturnValue({
       from: vi.fn(() => ({
-        where: vi.fn(async () => [{ count: 7 }]),
+        where: vi.fn(async () => [{ count: 5 }]),
       })),
     });
 

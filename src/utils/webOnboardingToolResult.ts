@@ -46,7 +46,7 @@ export const formatWebOnboardingStateMessage = (state: UserAgentOnboardingContex
 
   if (state.remainingDiscoveryExchanges !== undefined && state.remainingDiscoveryExchanges > 0) {
     parts.push(
-      `At least ${state.remainingDiscoveryExchanges} more user exchange(s) are needed before moving to summary.`,
+      `Recommended: ${state.remainingDiscoveryExchanges} more user exchange(s) before moving to summary. You may proceed earlier if the user has shared enough or wants to wrap up.`,
     );
   }
 

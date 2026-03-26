@@ -46,9 +46,7 @@ describe('web onboarding tool result helpers', () => {
       version: 1,
     });
 
-    expect(message).toContain(
-      'At least 3 more user exchange(s) are needed before moving to summary.',
-    );
+    expect(message).toContain('Recommended: 3 more user exchange(s) before moving to summary.');
     expect(message).toContain('Phase: Discovery');
   });
 
@@ -63,6 +61,6 @@ describe('web onboarding tool result helpers', () => {
       version: 1,
     });
 
-    expect(message).not.toContain('exchange(s) are needed');
+    expect(message).not.toContain('more user exchange(s) before moving to summary');
   });
 });

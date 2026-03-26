@@ -10,6 +10,7 @@ import type {
 import {
   MAX_ONBOARDING_STEPS,
   MIN_DISCOVERY_USER_MESSAGES,
+  RECOMMENDED_DISCOVERY_USER_MESSAGES,
   SAVE_USER_QUESTION_FIELDS,
 } from '@lobechat/types';
 import { merge } from '@lobechat/utils';
@@ -390,7 +391,7 @@ export class OnboardingService {
         discoveryContext.currentUserMessageCount - discoveryContext.startUserMessageCount;
       remainingDiscoveryExchanges = Math.max(
         0,
-        MIN_DISCOVERY_USER_MESSAGES - discoveryUserMessageCount,
+        RECOMMENDED_DISCOVERY_USER_MESSAGES - discoveryUserMessageCount,
       );
     }
 

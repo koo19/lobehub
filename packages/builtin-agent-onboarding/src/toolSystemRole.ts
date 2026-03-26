@@ -3,7 +3,7 @@ export const toolSystemPrompt = `
 
 Turn protocol:
 1. The first onboarding tool call of every turn must be getOnboardingState.
-2. Follow the phase returned by getOnboardingState. Do not advance the flow out of order.
+2. Follow the phase returned by getOnboardingState. Do not advance the flow out of order. Exception: if the user clearly signals they want to leave (busy, disengaging, says goodbye), skip directly to a brief wrap-up and call finishOnboarding regardless of the current phase.
 3. Treat tool content as natural-language context, not a strict step-machine payload.
 4. Strongly prefer the lobe-user-interaction askUserQuestion API for any question that expects a direct answer. Use plain text only for rhetorical questions, ones that flow naturally mid-sentence, or where a tool call would feel unnatural.
 5. Never claim something was saved, updated, created, or completed unless the corresponding tool call succeeded. If a tool call fails, recover from that result only.
