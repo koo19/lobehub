@@ -1,5 +1,5 @@
 import { createIoRedisState } from '@chat-adapter/state-ioredis';
-import { Chat, ConsoleLogger } from 'chat';
+import { Chat, ConsoleLogger, type Message, type MessageContext } from 'chat';
 import debug from 'debug';
 
 import { getServerDB } from '@/database/core/db-adaptor';
@@ -19,6 +19,7 @@ import {
   type PlatformDefinition,
   platformRegistry,
 } from './platforms';
+import { DEFAULT_DEBOUNCE_MS } from './platforms/const';
 
 const log = debug('lobe-server:bot:message-router');
 
@@ -213,7 +214,15 @@ export class BotMessageRouter {
 
     const commands = this.buildCommands(serverDB, { agentId, platform, userId });
 
-    const chatBot = this.createChatBot(adapters, `agent-${agentId}`);
+    const settings = provider.settings as Record<string, any> | undefined;
+    const concurrencyStrategy = (settings?.concurrency as string) || 'queue';
+    const debounceMs = (settings?.debounceMs as number) || DEFAULT_DEBOUNCE_MS;
+    const chatBot = this.createChatBot(
+      adapters,
+      `agent-${agentId}`,
+      concurrencyStrategy,
+      debounceMs,
+    );
     this.registerHandlers(chatBot, serverDB, client, commands, {
       agentId,
       applicationId,
@@ -284,9 +293,16 @@ export class BotMessageRouter {
     return this.sharedRedisProxy;
   }
 
-  private createChatBot(adapters: Record<string, any>, label: string): Chat<any> {
+  private createChatBot(
+    adapters: Record<string, any>,
+    label: string,
+    concurrencyStrategy: string,
+    debounceMs: number,
+  ): Chat<any> {
     const config: any = {
       adapters,
+      concurrency:
+        concurrencyStrategy === 'debounce' ? { debounceMs, strategy: 'debounce' } : 'queue',
       userName: `lobehub-bot-${label}`,
     };
 
@@ -300,6 +316,31 @@ export class BotMessageRouter {
     }
 
     return new Chat(config);
+  }
+
+  /**
+   * Merge messages skipped by the Chat SDK concurrency strategy (debounce/queue)
+   * with the current message. Returns a single message with combined text and
+   * attachments so the agent sees the full user intent.
+   */
+  private static mergeSkippedMessages(
+    message: Message,
+    context?: { skipped?: Message[] },
+  ): Message {
+    if (!context?.skipped?.length) return message;
+
+    // context.skipped is chronological; current message is the latest
+    const allMessages = [...context.skipped, message];
+    const mergedText = allMessages
+      .map((m) => m.text)
+      .filter(Boolean)
+      .join('\n');
+    const mergedAttachments = allMessages.flatMap((m) => (m as any).attachments || []);
+
+    return Object.assign(Object.create(Object.getPrototypeOf(message)), message, {
+      attachments: mergedAttachments,
+      text: mergedText,
+    });
   }
 
   private registerHandlers(
@@ -316,7 +357,6 @@ export class BotMessageRouter {
     const { agentId, applicationId, platform, userId } = info;
     const bridge = new AgentBridgeService(serverDB, userId);
     const charLimit = (info.settings?.charLimit as number) || undefined;
-    const debounceMs = (info.settings?.debounceMs as number) || undefined;
 
     /** Try dispatching a text command. Returns true if handled. */
     const tryDispatch = async (
@@ -338,43 +378,47 @@ export class BotMessageRouter {
       return true;
     };
 
-    bot.onNewMention(async (thread, message) => {
+    bot.onNewMention(async (thread, message, context?: MessageContext) => {
       if (await tryDispatch(thread, message.text)) return;
 
+      const merged = BotMessageRouter.mergeSkippedMessages(message, context);
+
       log(
-        'onNewMention: agent=%s, platform=%s, author=%s, thread=%s',
+        'onNewMention: agent=%s, platform=%s, author=%s, thread=%s, merged=%d',
         agentId,
         platform,
         message.author.userName,
         thread.id,
+        (context?.skipped?.length ?? 0) + 1,
       );
-      await bridge.handleMention(thread, message, {
+      await bridge.handleMention(thread, merged, {
         agentId,
         botContext: { applicationId, platform, platformThreadId: thread.id },
         charLimit,
         client,
-        debounceMs,
       });
     });
 
-    bot.onSubscribedMessage(async (thread, message) => {
+    bot.onSubscribedMessage(async (thread, message, context?: MessageContext) => {
       if (message.author.isBot === true) return;
       if (await tryDispatch(thread, message.text)) return;
 
+      const merged = BotMessageRouter.mergeSkippedMessages(message, context);
+
       log(
-        'onSubscribedMessage: agent=%s, platform=%s, author=%s, thread=%s',
+        'onSubscribedMessage: agent=%s, platform=%s, author=%s, thread=%s, merged=%d',
         agentId,
         platform,
         message.author.userName,
         thread.id,
+        (context?.skipped?.length ?? 0) + 1,
       );
 
-      await bridge.handleSubscribedMessage(thread, message, {
+      await bridge.handleSubscribedMessage(thread, merged, {
         agentId,
         botContext: { applicationId, platform, platformThreadId: thread.id },
         charLimit,
         client,
-        debounceMs,
       });
     });
 
@@ -384,11 +428,13 @@ export class BotMessageRouter {
     // Register onNewMessage handler based on platform config
     const dmEnabled = info.settings?.dm?.enabled ?? false;
     if (dmEnabled) {
-      bot.onNewMessage(/./, async (thread, message) => {
+      bot.onNewMessage(/./, async (thread, message, context?: MessageContext) => {
         if (message.author.isBot === true) return;
 
         // Skip text-based slash commands — already handled by registerCommands
         if (BotMessageRouter.dispatchTextCommand(message.text, commands)) return;
+
+        const merged = BotMessageRouter.mergeSkippedMessages(message, context);
 
         log(
           'onNewMessage (%s catch-all): agent=%s, author=%s, thread=%s, text=%s',
@@ -399,12 +445,11 @@ export class BotMessageRouter {
           message.text?.slice(0, 80),
         );
 
-        await bridge.handleMention(thread, message, {
+        await bridge.handleMention(thread, merged, {
           agentId,
           botContext: { applicationId, platform, platformThreadId: thread.id },
           charLimit,
           client,
-          debounceMs,
         });
       });
     }

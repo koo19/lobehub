@@ -17,7 +17,6 @@ import { SystemAgentService } from '@/server/services/systemAgent';
 import { formatPrompt as formatPromptUtil } from './formatPrompt';
 import type { PlatformClient } from './platforms';
 import { platformRegistry } from './platforms';
-import { DEFAULT_DEBOUNCE_MS } from './platforms/const';
 import {
   renderError,
   renderFinalReply,
@@ -87,7 +86,6 @@ interface BridgeHandlerOpts {
   botContext?: ChatTopicBotContext;
   charLimit?: number;
   client?: PlatformClient;
-  debounceMs?: number;
 }
 
 /**
@@ -196,92 +194,6 @@ export class AgentBridgeService {
     }
   }
 
-  /**
-   * Debounce buffer for incoming messages per thread.
-   * Users often send multiple short messages in quick succession (e.g. "hello" + "how are you").
-   * Instead of triggering separate agent executions for each, we collect messages arriving
-   * within a short window and merge them into a single prompt.
-   */
-  private static pendingMessages = new Map<
-    string,
-    {
-      messages: Message[];
-      resolve: () => void;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >();
-
-  /**
-   * Buffer a message and return a promise that resolves when the debounce window closes.
-   * Returns the collected messages if this call "wins" the debounce (is the first),
-   * or null if the message was appended to an existing pending batch.
-   *
-   * Messages with attachments flush immediately (no debounce) to avoid delaying
-   * file-heavy interactions.
-   */
-  private static bufferMessage(
-    threadId: string,
-    message: Message,
-    debounceMs: number,
-  ): Promise<Message[] | null> {
-    // Flush immediately if the message has attachments
-    const hasAttachments = !!(message as any).attachments?.length;
-
-    const existing = AgentBridgeService.pendingMessages.get(threadId);
-
-    if (existing) {
-      // Append to existing batch and reset the timer
-      existing.messages.push(message);
-      clearTimeout(existing.timer);
-
-      if (hasAttachments) {
-        // Flush now
-        existing.resolve();
-      } else {
-        existing.timer = setTimeout(() => existing.resolve(), debounceMs);
-      }
-
-      return Promise.resolve(null); // not the owner
-    }
-
-    // First message — create a new batch
-    if (hasAttachments) {
-      return Promise.resolve([message]); // no debounce
-    }
-
-    return new Promise<Message[]>((resolve) => {
-      const batch = {
-        messages: [message],
-        resolve: () => {
-          const entry = AgentBridgeService.pendingMessages.get(threadId);
-          AgentBridgeService.pendingMessages.delete(threadId);
-          resolve(entry?.messages ?? [message]);
-        },
-        timer: setTimeout(() => {
-          const entry = AgentBridgeService.pendingMessages.get(threadId);
-          if (entry) entry.resolve();
-        }, debounceMs),
-      };
-      AgentBridgeService.pendingMessages.set(threadId, batch);
-    });
-  }
-
-  /**
-   * Merge multiple messages into a single synthetic Message for the agent.
-   * Preserves the first message's metadata (author, raw, attachments) and
-   * concatenates all text with newlines.
-   */
-  private static mergeMessages(messages: Message[]): Message {
-    if (messages.length === 1) return messages[0];
-
-    const first = messages[0];
-    const mergedText = messages.map((m) => m.text).join('\n');
-
-    return Object.assign(Object.create(Object.getPrototypeOf(first)), first, {
-      text: mergedText,
-    });
-  }
-
   constructor(db: LobeChatDatabase, userId: string) {
     this.db = db;
     this.userId = userId;
@@ -331,7 +243,7 @@ export class AgentBridgeService {
     message: Message,
     opts: BridgeHandlerOpts,
   ): Promise<void> {
-    const { agentId, botContext, charLimit, debounceMs } = opts;
+    const { agentId, botContext, charLimit } = opts;
 
     log(
       'handleMention: agentId=%s, user=%s, text=%s',
@@ -345,26 +257,6 @@ export class AgentBridgeService {
       log('handleMention: skipping, thread=%s already has an active execution', thread.id);
       return;
     }
-
-    // Debounce: buffer rapid-fire messages and merge them into one prompt.
-    // The first caller wins and drives the execution; subsequent callers
-    // append their message to the buffer and return immediately.
-    const batch = await AgentBridgeService.bufferMessage(
-      thread.id,
-      message,
-      debounceMs ?? DEFAULT_DEBOUNCE_MS,
-    );
-    if (!batch) {
-      log('handleMention: message buffered for thread=%s, waiting for debounce', thread.id);
-      return;
-    }
-
-    const mergedMessage = AgentBridgeService.mergeMessages(batch);
-    log(
-      'handleMention: debounce done, %d message(s) merged for thread=%s',
-      batch.length,
-      thread.id,
-    );
 
     AgentBridgeService.activeThreads.add(thread.id);
 
@@ -395,7 +287,7 @@ export class AgentBridgeService {
     try {
       // executeWithCallback handles progress message (post + edit at each step)
       // The final reply is edited into the progress message by onComplete
-      const { topicId } = await this.executeWithCallback(thread, mergedMessage, {
+      const { topicId } = await this.executeWithCallback(thread, message, {
         agentId,
         botContext,
         channelContext,
@@ -433,7 +325,7 @@ export class AgentBridgeService {
     message: Message,
     opts: BridgeHandlerOpts,
   ): Promise<void> {
-    const { agentId, botContext, charLimit, debounceMs } = opts;
+    const { agentId, botContext, charLimit } = opts;
     const threadState = await thread.state;
     const topicId = threadState?.topicId;
 
@@ -452,24 +344,6 @@ export class AgentBridgeService {
       );
       return;
     }
-
-    // Debounce: same as handleMention — merge rapid-fire messages
-    const batch = await AgentBridgeService.bufferMessage(
-      thread.id,
-      message,
-      debounceMs ?? DEFAULT_DEBOUNCE_MS,
-    );
-    if (!batch) {
-      log('handleSubscribedMessage: message buffered for thread=%s', thread.id);
-      return;
-    }
-
-    const mergedMessage = AgentBridgeService.mergeMessages(batch);
-    log(
-      'handleSubscribedMessage: debounce done, %d message(s) merged for thread=%s',
-      batch.length,
-      thread.id,
-    );
 
     AgentBridgeService.activeThreads.add(thread.id);
 
@@ -492,7 +366,7 @@ export class AgentBridgeService {
 
     try {
       // executeWithCallback handles progress message (post + edit at each step)
-      await this.executeWithCallback(thread, mergedMessage, {
+      await this.executeWithCallback(thread, message, {
         agentId,
         botContext,
         channelContext,

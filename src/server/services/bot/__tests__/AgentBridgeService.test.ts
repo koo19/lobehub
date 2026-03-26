@@ -122,7 +122,6 @@ describe('AgentBridgeService', () => {
       agentId: 'agent-1',
       botContext: { platformThreadId: THREAD_ID } as any,
       client,
-      debounceMs: 0,
     });
 
     const [mentionReactionThreadId, mentionReactionMessageId, mentionReactionEmoji] =
@@ -143,7 +142,6 @@ describe('AgentBridgeService', () => {
       agentId: 'agent-1',
       botContext: { platformThreadId: THREAD_ID } as any,
       client,
-      debounceMs: 0,
     });
 
     const [replyReactionThreadId, replyReactionMessageId, replyReactionEmoji] =
