@@ -1,7 +1,15 @@
 'use client';
 
 import { Flexbox, Form, FormGroup, FormItem, Tag } from '@lobehub/ui';
-import { Button, type FormInstance, InputNumber, Popconfirm, Select, Switch } from 'antd';
+import {
+  Button,
+  Form as AntdForm,
+  type FormInstance,
+  InputNumber,
+  Popconfirm,
+  Select,
+  Switch,
+} from 'antd';
 import { createStaticStyles } from 'antd-style';
 import { RotateCcw } from 'lucide-react';
 import { memo, useCallback, useMemo, useState } from 'react';
@@ -66,6 +74,12 @@ interface SchemaFieldProps {
 const SchemaField = memo<SchemaFieldProps>(({ field, parentKey, divider }) => {
   const { t: _t } = useTranslation('agent');
   const t = _t as (key: string) => string;
+
+  // Conditional visibility: watch the sibling field specified by visibleWhen
+  const watchedValue = AntdForm.useWatch(
+    field.visibleWhen ? [parentKey, field.visibleWhen.field] : [],
+  );
+  if (field.visibleWhen && watchedValue !== field.visibleWhen.value) return null;
 
   const label = field.devOnly ? (
     <Flexbox horizontal align="center" gap={8}>
