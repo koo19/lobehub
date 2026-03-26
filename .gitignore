@@ -137,3 +137,4 @@ pnpm-lock.yaml
 spaHtmlTemplates.ts
 
 .superpowers/
+docs/superpowers
