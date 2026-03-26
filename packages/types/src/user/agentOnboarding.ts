@@ -134,12 +134,16 @@ export const ONBOARDING_PHASES = [
   'summary',
 ] as const;
 
+export const MIN_DISCOVERY_USER_MESSAGES = 4;
+
 export type OnboardingPhase = (typeof ONBOARDING_PHASES)[number];
 
 export interface UserAgentOnboardingContext {
+  discoveryUserMessageCount?: number;
   finished: boolean;
   missingStructuredFields: SaveUserQuestionField[];
   phase: OnboardingPhase;
+  remainingDiscoveryExchanges?: number;
   topicId?: string;
   version: number;
 }
@@ -147,6 +151,7 @@ export interface UserAgentOnboardingContext {
 export interface UserAgentOnboarding {
   activeTopicId?: string;
   agentIdentity?: UserOnboardingAgentIdentity;
+  discoveryStartUserMessageCount?: number;
   draft?: UserAgentOnboardingDraft;
   finishedAt?: string;
   profile?: UserOnboardingProfile;
@@ -187,9 +192,11 @@ export const OnboardingPhaseSchema = z.enum(ONBOARDING_PHASES);
 
 export const UserAgentOnboardingContextSchema = z
   .object({
+    discoveryUserMessageCount: z.number().optional(),
     finished: z.boolean(),
     missingStructuredFields: z.array(SaveUserQuestionFieldSchema),
     phase: OnboardingPhaseSchema,
+    remainingDiscoveryExchanges: z.number().optional(),
     topicId: z.string().optional(),
     version: z.number(),
   })
@@ -198,6 +205,7 @@ export const UserAgentOnboardingContextSchema = z
 export const UserAgentOnboardingSchema = z
   .object({
     activeTopicId: z.string().optional(),
+    discoveryStartUserMessageCount: z.number().optional(),
     finishedAt: z.string().optional(),
     version: z.number(),
   })
