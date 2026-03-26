@@ -271,6 +271,7 @@ const PlatformDetail = memo<PlatformDetailProps>(({ platformDef, agentId, curren
       }
 
       setSaveResult({ type: 'success' });
+      setTimeout(() => setSaveResult(undefined), 3000);
       setSaving(false);
 
       // Auto-connect bot after save
