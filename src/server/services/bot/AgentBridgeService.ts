@@ -1067,10 +1067,17 @@ export class AgentBridgeService {
    * Extract file attachment metadata from Chat SDK message for passing to execAgent.
    * Includes attachments from both the message itself and any referenced (quoted) message.
    */
-  private extractFiles(
-    message: Message,
-  ): Array<{ mimeType?: string; name?: string; size?: number; url: string }> | undefined {
+  private extractFiles(message: Message):
+    | Array<{
+        buffer?: Buffer;
+        mimeType?: string;
+        name?: string;
+        size?: number;
+        url: string;
+      }>
+    | undefined {
     type AttachmentLike = {
+      buffer?: Buffer;
       content_type?: string;
       filename?: string;
       mimeType?: string;
@@ -1080,18 +1087,25 @@ export class AgentBridgeService {
       url?: string;
     };
 
-    const files: Array<{ mimeType?: string; name?: string; size?: number; url: string }> = [];
+    const files: Array<{
+      buffer?: Buffer;
+      mimeType?: string;
+      name?: string;
+      size?: number;
+      url: string;
+    }> = [];
 
     // 1. Direct attachments from the message (parsed by Chat SDK)
     const directAttachments = (message as any).attachments as AttachmentLike[] | undefined;
     if (directAttachments?.length) {
       for (const att of directAttachments) {
-        if (att.url) {
+        if (att.url || att.buffer) {
           files.push({
+            buffer: att.buffer,
             mimeType: att.mimeType,
             name: att.name,
             size: att.size,
-            url: att.url,
+            url: att.url || '',
           });
         }
       }

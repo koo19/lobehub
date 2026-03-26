@@ -14,6 +14,7 @@ import type {
   WebhookOptions,
 } from 'chat';
 import { Message, parseMarkdown } from 'chat';
+import mime from 'mime';
 
 import { WechatApiClient } from './api';
 import { WechatFormatConverter } from './format-converter';
@@ -32,11 +33,12 @@ function extractText(msg: WechatRawMessage): string {
         break;
       }
       case MessageItemType.IMAGE: {
-        parts.push('[image]');
+        // Image content is conveyed via attachments, no text placeholder needed
         break;
       }
       case MessageItemType.VOICE: {
-        parts.push(item.voice_item?.text || '[voice]');
+        // Only include transcription text, skip placeholder
+        if (item.voice_item?.text) parts.push(item.voice_item.text);
         break;
       }
       case MessageItemType.FILE: {
@@ -44,7 +46,7 @@ function extractText(msg: WechatRawMessage): string {
         break;
       }
       case MessageItemType.VIDEO: {
-        parts.push('[video]');
+        // Video content is conveyed via attachments, no text placeholder needed
         break;
       }
     }
@@ -150,7 +152,14 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
     }
 
     const text = extractText(msg);
-    if (!text.trim()) {
+    const hasMedia = msg.item_list.some(
+      (item) =>
+        item.type === MessageItemType.IMAGE ||
+        item.type === MessageItemType.VIDEO ||
+        item.type === MessageItemType.VOICE ||
+        item.type === MessageItemType.FILE,
+    );
+    if (!text.trim() && !hasMedia) {
       return Response.json({ ok: true });
     }
 
@@ -290,11 +299,14 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
   }
 
   /**
-   * Download media items and return attachments with data URLs.
+   * Download media items and return attachments.
    *
    * Strategy per item type:
    *   1. If CDN media is available, download + AES decrypt (protocol-spec §8.3).
    *   2. For images: fall back to `image_item.url` if CDN is unavailable or fails.
+   *
+   * When uploadMedia is configured, files are uploaded directly to S3 and the
+   * attachment carries a `fileId` so execAgent can skip re-uploading.
    */
   private async downloadMediaAttachments(msg: WechatRawMessage): Promise<Attachment[]> {
     const attachments: Attachment[] = [];
@@ -309,35 +321,43 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
           }
           case MessageItemType.VOICE: {
             if (!hasCdnMedia(item) || !item.voice_item?.media) break;
-            const buffer = await this.api.downloadCdnMedia(item.voice_item.media);
+            const voiceBuf = await this.api.downloadCdnMedia(item.voice_item.media);
+            const voice = this.normalizeMedia(voiceBuf, 'audio/silk');
             attachments.push({
-              mimeType: 'audio/silk',
+              buffer: voice.buffer,
+              mimeType: voice.mimeType,
               type: 'audio',
-              url: `data:audio/silk;base64,${buffer.toString('base64')}`,
-            });
+              url: voice.url,
+            } as Attachment);
             break;
           }
           case MessageItemType.FILE: {
             if (!hasCdnMedia(item) || !item.file_item?.media) break;
-            const buffer = await this.api.downloadCdnMedia(item.file_item.media);
+            const fileBuf = await this.api.downloadCdnMedia(item.file_item.media);
+            const fileName = item.file_item?.file_name;
+            const fileMimeType = (fileName && mime.getType(fileName)) || 'application/octet-stream';
+            const file = this.normalizeMedia(fileBuf, fileMimeType);
             attachments.push({
-              mimeType: 'application/octet-stream',
-              name: item.file_item?.file_name,
+              buffer: file.buffer,
+              mimeType: file.mimeType,
+              name: fileName,
               size: parseOptionalNumber(item.file_item?.len),
               type: 'file',
-              url: `data:application/octet-stream;base64,${buffer.toString('base64')}`,
-            });
+              url: file.url,
+            } as Attachment);
             break;
           }
           case MessageItemType.VIDEO: {
             if (!hasCdnMedia(item) || !item.video_item?.media) break;
-            const buffer = await this.api.downloadCdnMedia(item.video_item.media);
+            const videoBuf = await this.api.downloadCdnMedia(item.video_item.media);
+            const video = this.normalizeMedia(videoBuf, 'video/mp4');
             attachments.push({
-              mimeType: 'video/mp4',
+              buffer: video.buffer,
+              mimeType: video.mimeType,
               size: parseOptionalNumber(item.video_item?.video_size),
               type: 'video',
-              url: `data:video/mp4;base64,${buffer.toString('base64')}`,
-            });
+              url: video.url,
+            } as Attachment);
             break;
           }
         }
@@ -368,13 +388,15 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
     // 1. Try CDN download from main media
     if (imageItem.media?.encrypt_query_param) {
       try {
-        const buffer = await this.api.downloadCdnMedia(imageItem.media, imageItem.aeskey);
+        const buf = await this.api.downloadCdnMedia(imageItem.media, imageItem.aeskey);
+        const img = this.normalizeMedia(buf, 'image/jpeg');
         return {
-          mimeType: 'image/jpeg',
+          buffer: img.buffer,
+          mimeType: img.mimeType,
           name: 'image.jpg',
           type: 'image',
-          url: `data:image/jpeg;base64,${buffer.toString('base64')}`,
-        };
+          url: img.url,
+        } as Attachment;
       } catch (error) {
         this.logger.warn('CDN image download failed: %s', error);
       }
@@ -383,13 +405,15 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
     // 2. Try CDN thumbnail as fallback
     if (imageItem.thumb_media?.encrypt_query_param) {
       try {
-        const buffer = await this.api.downloadCdnMedia(imageItem.thumb_media, imageItem.aeskey);
+        const buf = await this.api.downloadCdnMedia(imageItem.thumb_media, imageItem.aeskey);
+        const img = this.normalizeMedia(buf, 'image/jpeg');
         return {
-          mimeType: 'image/jpeg',
+          buffer: img.buffer,
+          mimeType: img.mimeType,
           name: 'image.jpg',
           type: 'image',
-          url: `data:image/jpeg;base64,${buffer.toString('base64')}`,
-        };
+          url: img.url,
+        } as Attachment;
       } catch (error) {
         this.logger.warn('CDN thumbnail download failed: %s', error);
       }
@@ -402,14 +426,16 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
           signal: AbortSignal.timeout(15_000),
         });
         if (response.ok) {
-          const buffer = Buffer.from(await response.arrayBuffer());
+          const buf = Buffer.from(await response.arrayBuffer());
           const contentType = response.headers.get('content-type') || 'image/jpeg';
+          const img = this.normalizeMedia(buf, contentType);
           return {
-            mimeType: contentType,
+            buffer: img.buffer,
+            mimeType: img.mimeType,
             name: 'image.jpg',
             type: 'image',
-            url: `data:${contentType};base64,${buffer.toString('base64')}`,
-          };
+            url: img.url,
+          } as Attachment;
         }
         this.logger.warn('Image url fallback failed: HTTP %d', response.status);
       } catch (error) {
@@ -419,6 +445,17 @@ export class WechatAdapter implements Adapter<WechatThreadId, WechatRawMessage> 
 
     this.logger.warn('No image source available (no CDN media, no thumb, no url)');
     return undefined;
+  }
+
+  /**
+   * Wrap raw buffer into the shape expected by attachment objects.
+   * Server-side ingestAttachment handles compression, upload, and record creation.
+   */
+  private normalizeMedia(
+    buffer: Buffer,
+    mimeType: string,
+  ): { buffer: Buffer; mimeType: string; url: string } {
+    return { buffer, mimeType, url: '' };
   }
 
   // ------------------------------------------------------------------
