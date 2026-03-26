@@ -56,8 +56,7 @@ const Group = memo<GroupChildrenProps>(
     return (
       <MessageAggregationContext value={contextValue}>
         <Flexbox className={styles.container} gap={8}>
-          {blocks.map((item) => {
-            // Filter out empty blocks when message is not streaming
+          {blocks.map((item, index) => {
             if (!isGenerating && isEmptyBlock(item)) return null;
 
             return (
@@ -66,6 +65,7 @@ const Group = memo<GroupChildrenProps>(
                 assistantId={id}
                 contentId={contentId}
                 disableEditing={disableEditing}
+                isFirstBlock={index === 0}
                 key={id + '.' + item.id}
                 messageIndex={messageIndex}
               />

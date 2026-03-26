@@ -71,7 +71,7 @@ export interface ChatInputProps {
    */
   sendMenu?: MenuProps;
   /**
-   * Whether to show runtime config below the chat input
+   * Whether to show the runtime config bar (Local/Cloud/Auto Approve)
    */
   showRuntimeConfig?: boolean;
   /**

@@ -220,17 +220,21 @@ describe('WechatAdapter', () => {
       expect(message.author.isBot).toBe(true);
     });
 
-    it('should extract image placeholder', () => {
+    it('should extract image placeholder text (parseMessage is sync, no CDN download)', () => {
       const raw = makeRawMessage({
         item_list: [
           {
-            image_item: { media: { aes_key: '', encrypt_query_param: '' } },
+            image_item: {
+              media: { aes_key: 'ABEiM0RVZneImaq7zN3u/w==', encrypt_query_param: 'AAFFtest' },
+            },
             type: MessageItemType.IMAGE,
           },
         ],
       });
       const message = adapter.parseMessage(raw);
       expect(message.text).toBe('[image]');
+      // parseMessage is sync — CDN download only happens in parseRawEvent
+      expect(message.attachments).toEqual([]);
     });
 
     it('should extract voice text or placeholder', () => {
@@ -284,6 +288,58 @@ describe('WechatAdapter', () => {
       });
       const message = adapter.parseMessage(raw);
       expect(message.text).toBe('line1\nline2');
+    });
+
+    it('should download image from CDN and convert to data URL', async () => {
+      const imageBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      vi.spyOn((adapter as any).api, 'downloadCdnMedia').mockResolvedValueOnce(imageBytes);
+
+      const raw = makeRawMessage({
+        item_list: [
+          {
+            image_item: {
+              aeskey: '00112233445566778899aabbccddeeff',
+              media: { aes_key: 'ABEiM0RVZneImaq7zN3u/w==', encrypt_query_param: 'AAFFtest' },
+            },
+            type: MessageItemType.IMAGE,
+          },
+        ],
+      });
+
+      await adapter.handleWebhook(makeRequest(raw));
+
+      const factory = vi.mocked(mockChat.processMessage).mock.calls[0]?.[2];
+      const message = await factory?.();
+
+      const expectedDataUrl = `data:image/jpeg;base64,${imageBytes.toString('base64')}`;
+      expect(message?.attachments).toEqual([
+        { mimeType: 'image/jpeg', name: 'image.jpg', type: 'image', url: expectedDataUrl },
+      ]);
+      expect(message?.text).toBe('[image]');
+    });
+
+    it('should return empty attachments when CDN download fails', async () => {
+      vi.spyOn((adapter as any).api, 'downloadCdnMedia').mockRejectedValueOnce(
+        new Error('CDN download failed: 500'),
+      );
+
+      const raw = makeRawMessage({
+        item_list: [
+          {
+            image_item: {
+              media: { aes_key: 'ABEiM0RVZneImaq7zN3u/w==', encrypt_query_param: 'AAFFtest' },
+            },
+            type: MessageItemType.IMAGE,
+          },
+        ],
+      });
+
+      await adapter.handleWebhook(makeRequest(raw));
+
+      const factory = vi.mocked(mockChat.processMessage).mock.calls[0]?.[2];
+      const message = await factory?.();
+
+      expect(message?.attachments).toEqual([]);
     });
   });
 
