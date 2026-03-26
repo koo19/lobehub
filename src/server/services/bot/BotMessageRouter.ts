@@ -215,7 +215,7 @@ export class BotMessageRouter {
     const commands = this.buildCommands(serverDB, { agentId, platform, userId });
 
     const settings = provider.settings as Record<string, any> | undefined;
-    const concurrencyStrategy = (settings?.concurrency as string) || 'queue';
+    const concurrencyStrategy = (settings?.concurrency as string) || 'debounce';
     const debounceMs = (settings?.debounceMs as number) || DEFAULT_DEBOUNCE_MS;
     const chatBot = this.createChatBot(
       adapters,
