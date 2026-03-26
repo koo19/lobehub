@@ -34,4 +34,35 @@ describe('web onboarding tool result helpers', () => {
     expect(message).toContain('Structured fields still needed: interests.');
     expect(message).toContain('Phase: Discovery');
   });
+
+  it('includes pacing hint when remaining discovery exchanges > 0', () => {
+    const message = formatWebOnboardingStateMessage({
+      discoveryUserMessageCount: 1,
+      finished: false,
+      missingStructuredFields: [],
+      phase: 'discovery',
+      remainingDiscoveryExchanges: 3,
+      topicId: 'topic-1',
+      version: 1,
+    });
+
+    expect(message).toContain(
+      'At least 3 more user exchange(s) are needed before moving to summary.',
+    );
+    expect(message).toContain('Phase: Discovery');
+  });
+
+  it('omits pacing hint when remaining discovery exchanges is 0', () => {
+    const message = formatWebOnboardingStateMessage({
+      discoveryUserMessageCount: 4,
+      finished: false,
+      missingStructuredFields: [],
+      phase: 'summary',
+      remainingDiscoveryExchanges: 0,
+      topicId: 'topic-1',
+      version: 1,
+    });
+
+    expect(message).not.toContain('exchange(s) are needed');
+  });
 });

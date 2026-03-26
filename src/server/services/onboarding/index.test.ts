@@ -86,6 +86,12 @@ describe('OnboardingService', () => {
     transactionUpdateCalls = [];
 
     mockDb = {
+      delete: vi.fn(() => ({ where: vi.fn(async () => undefined) })),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(async () => [{ count: 0 }]),
+        })),
+      })),
       transaction: vi.fn(async (callback) =>
         callback({
           update: vi.fn((table) => {
@@ -276,5 +282,117 @@ describe('OnboardingService', () => {
       success: true,
       topicId: 'topic-1',
     });
+  });
+
+  it('stays in discovery when all fields complete but discovery exchanges < 4', async () => {
+    mockAgentModel.getBuiltinAgent.mockResolvedValue({
+      avatar: '⚡',
+      id: 'inbox-agent-1',
+      title: 'Jarvis',
+    });
+    persistedUserState.fullName = 'Ada Lovelace';
+    persistedUserState.interests = ['AI tooling'];
+    persistedUserState.settings.general.responseLanguage = 'en-US';
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-1',
+      discoveryStartUserMessageCount: 3,
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    // 5 user messages total, baseline was 3 → only 2 discovery exchanges (< 4)
+    mockDb.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(async () => [{ count: 5 }]),
+      })),
+    });
+
+    const service = new OnboardingService(mockDb, userId);
+    const context = await service.getState();
+
+    expect(context.phase).toBe('discovery');
+    expect(context.discoveryUserMessageCount).toBe(2);
+    expect(context.remainingDiscoveryExchanges).toBe(2);
+  });
+
+  it('advances to summary when discovery exchanges reach minimum threshold', async () => {
+    mockAgentModel.getBuiltinAgent.mockResolvedValue({
+      avatar: '⚡',
+      id: 'inbox-agent-1',
+      title: 'Jarvis',
+    });
+    persistedUserState.fullName = 'Ada Lovelace';
+    persistedUserState.interests = ['AI tooling'];
+    persistedUserState.settings.general.responseLanguage = 'en-US';
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-1',
+      discoveryStartUserMessageCount: 3,
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    // 7 user messages total, baseline was 3 → 4 discovery exchanges (= MIN)
+    mockDb.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(async () => [{ count: 7 }]),
+      })),
+    });
+
+    const service = new OnboardingService(mockDb, userId);
+    const context = await service.getState();
+
+    expect(context.phase).toBe('summary');
+  });
+
+  it('captures discovery baseline on first entry to discovery phase', async () => {
+    mockAgentModel.getBuiltinAgent.mockResolvedValue({
+      avatar: '⚡',
+      id: 'inbox-agent-1',
+      title: 'Jarvis',
+    });
+    persistedUserState.fullName = 'Ada Lovelace';
+    // interests NOT set — so phase would be discovery due to missing field
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-1',
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    // 3 user messages at discovery entry
+    mockDb.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(async () => [{ count: 3 }]),
+      })),
+    });
+
+    const service = new OnboardingService(mockDb, userId);
+    await service.getState();
+
+    // Baseline should be persisted
+    expect(persistedUserState.agentOnboarding.discoveryStartUserMessageCount).toBe(3);
+  });
+
+  it('does not overwrite discovery baseline on subsequent getState calls', async () => {
+    mockAgentModel.getBuiltinAgent.mockResolvedValue({
+      avatar: '⚡',
+      id: 'inbox-agent-1',
+      title: 'Jarvis',
+    });
+    persistedUserState.fullName = 'Ada Lovelace';
+    persistedUserState.agentOnboarding = {
+      activeTopicId: 'topic-1',
+      discoveryStartUserMessageCount: 3,
+      version: CURRENT_ONBOARDING_VERSION,
+    };
+
+    // Now 6 user messages
+    mockDb.select.mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(async () => [{ count: 6 }]),
+      })),
+    });
+
+    const service = new OnboardingService(mockDb, userId);
+    await service.getState();
+
+    // Baseline should remain 3, not updated to 6
+    expect(persistedUserState.agentOnboarding.discoveryStartUserMessageCount).toBe(3);
   });
 });
